@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pico-ros-py"
+version = "0.1.0"
+description = "A Python re-imagining of the Pico-ROS pattern (Node/pub/sub/services/params over Zenoh) for runtimes like the Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "the pico-ros-py authors" }]
+keywords = ["ros2", "zenoh", "rmw_zenoh", "robotics", "raspberry-pi", "pico-ros"]
+dependencies = [
+  "zenoh-ros2-sdk>=0.1.7",
+  "eclipse-zenoh>=1.0,<2.0",
+  "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+"Upstream (Pico-ROS)" = "https://github.com/Pico-ROS/Pico-ROS-software"
+"Transport (zenoh_ros2_sdk)" = "https://github.com/robotis-git/zenoh_ros2_sdk"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

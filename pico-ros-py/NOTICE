@@ -1,0 +1,22 @@
+pico-ros-py
+Copyright (c) 2025 the pico-ros-py authors
+
+This product is a Python re-imagining of the Pico-ROS pattern. It is licensed
+under the Apache License, Version 2.0 (see LICENSE).
+
+It is informed by and semantically compatible with:
+
+  Pico-ROS (https://github.com/Pico-ROS/Pico-ROS-software)
+    Copyright (c) 2025 Ubiquity Robotics
+    Licensed under the BSD 3-Clause License.
+    The picoros / picoserdes / picoparams module structure and the parameter
+    backend interface (ref/get/type/set/describe/list/prefixes) are modeled on
+    Pico-ROS. No Pico-ROS source code is included; this is an independent
+    Python implementation.
+
+It depends on, and wraps, at runtime:
+
+  zenoh_ros2_sdk (https://github.com/robotis-git/zenoh_ros2_sdk)
+    Licensed under the Apache License, Version 2.0.
+    Provides the CDR serialization, rmw_zenoh-compatible liveliness/discovery,
+    type hashing, and pub/sub/service transport.
