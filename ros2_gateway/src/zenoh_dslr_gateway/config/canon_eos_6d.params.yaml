@@ -1,0 +1,7 @@
+zenoh_dslr_gateway:
+  ros__parameters:
+    camera_id: Canon_EOS_6D
+    frame_key_prefix: dslr/Canon_EOS_6D/frames
+    image_topic: /dslr/Canon_EOS_6D/image_raw
+    compressed_topic: /dslr/Canon_EOS_6D/image_compressed
+    zenoh_config_path: ""

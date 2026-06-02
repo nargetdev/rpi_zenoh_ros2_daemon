@@ -1,0 +1,55 @@
+{
+  "settings": {
+    "camera_id": "Canon_EOS_6D",
+    "camera_model": "Canon EOS 6D",
+    "capture_service_name": "/dslr/Canon_EOS_6D/capture",
+    "frame_key_prefix": "dslr/Canon_EOS_6D/frames",
+    "capture_backend": {
+      "type": "gphoto2",
+      "command": null,
+      "encoding": "image/jpeg",
+      "port": "usb:001,004",
+      "filename_pattern": "{camera_id}_{capture_id}",
+      "keep_on_camera": false,
+      "extra_args": null
+    },
+    "persistence": {
+      "enabled": true,
+      "directory": "/home/soma/GROK_WS/PhotogrammetryWAAM-Blender-UX/ros2_ws/edge/raspberry-dslr-service-zenoh/pi_runtime/config/captures/Canon_EOS_6D",
+      "max_bytes": 754974720
+    },
+    "zenoh_config_path": "/home/soma/GROK_WS/PhotogrammetryWAAM-Blender-UX/ros2_ws/edge/raspberry-dslr-service-zenoh/deploy/pi/zenoh-client.json5",
+    "router_ip": "172.31.1.252",
+    "router_port": 7447,
+    "publish_delay_ms": 0,
+    "heartbeat": {
+      "enabled": true,
+      "interval_s": 5.0,
+      "zenoh_key": "dslr/Canon_EOS_6D/heartbeat",
+      "liveliness_key": "dslr/Canon_EOS_6D/alive",
+      "mqtt": {
+        "enabled": true,
+        "host": "172.31.1.252",
+        "port": 1883,
+        "topic": "dslr/Canon_EOS_6D/heartbeat",
+        "qos": 0,
+        "keepalive": 60,
+        "username": null,
+        "password": null,
+        "client_id": "dslr-Canon_EOS_6D-heartbeat"
+      }
+    }
+  },
+  "sample_heartbeat": {
+    "status": "alive",
+    "camera_id": "Canon_EOS_6D",
+    "camera_model": "Canon EOS 6D",
+    "host": "notbroken",
+    "capture_service": "/dslr/Canon_EOS_6D/capture",
+    "frame_key_prefix": "dslr/Canon_EOS_6D/frames",
+    "seq": 3,
+    "capture_count": 7,
+    "ts": 1700000000.0,
+    "interval_s": 5.0
+  }
+}

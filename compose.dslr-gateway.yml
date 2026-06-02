@@ -1,0 +1,35 @@
+services:
+  rmw_zenohd:
+    image: ros:kilted
+    container_name: dslr_rmw_zenohd
+    profiles: ["router"]
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ZENOH_ROUTER_CONFIG_URI: /workspace/deploy/mothership/rmw-zenoh-router.json5
+    volumes:
+      - .:/workspace:ro
+    command: >
+      bash -lc "source /opt/ros/kilted/setup.bash &&
+      ros2 run rmw_zenoh_cpp rmw_zenohd"
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/127.0.0.1/7447'"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  dslr_gateway:
+    build:
+      context: .
+      dockerfile: docker/dslr-gateway/Dockerfile
+    image: raspberry-dslr-service-zenoh-gateway:latest
+    container_name: dslr_frame_gateway
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ZENOH_CONFIG_OVERRIDE: 'mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
+    volumes:
+      - ./deploy:/workspace/deploy:ro

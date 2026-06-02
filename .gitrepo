@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/nargetdev/raspberry-dslr-service-zenoh
+	branch = main
+	commit = df3a4e7541db3582b9eb2e9417871d42b827305a
+	parent = eda67ec73001e72be5b80568b80296cb1dac0901
+	method = merge
+	cmdver = 0.4.9

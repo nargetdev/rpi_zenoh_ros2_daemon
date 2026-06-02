@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zenoh-dslr-pi-runtime"
+version = "0.1.0"
+description = "Zenoh-native Raspberry Pi DSLR capture runtime"
+requires-python = ">=3.10"
+dependencies = [
+  "eclipse-zenoh>=1.0,<2.0",
+  "Pillow>=9.0.0",
+  "zenoh-ros2-sdk>=0.1.0",
+  "paho-mqtt>=1.6,<3.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,7 @@
+zenoh_dslr_gateway:
+  ros__parameters:
+    camera_id: Canon_EOS_M50
+    frame_key_prefix: dslr/Canon_EOS_M50/frames
+    image_topic: /dslr/Canon_EOS_M50/image_raw
+    compressed_topic: /dslr/Canon_EOS_M50/image_compressed
+    zenoh_config_path: ""
