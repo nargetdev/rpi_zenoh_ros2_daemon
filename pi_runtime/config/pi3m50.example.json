@@ -1,6 +1,7 @@
 {
   "camera_model": "Canon EOS M50",
   "camera_id": "Canon_EOS_M50",
+  "device_id": "pi3m50",
   "capture_service_name": "/dslr/Canon_EOS_M50/capture",
   "frame_key_prefix": "dslr/Canon_EOS_M50/frames",
   "zenoh_config_path": "../../deploy/pi/zenoh-client.json5",
@@ -17,5 +18,12 @@
     "directory": "./captures/Canon_EOS_M50",
     "max_bytes": 754974720
   },
-  "publish_delay_ms": 0
+  "publish_delay_ms": 0,
+  "pgwaam": {
+    "enabled": true,
+    "host": "172.31.1.252",
+    "port": 1883,
+    "interval_s": 5.0,
+    "retain": true
+  }
 }
