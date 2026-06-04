@@ -10,7 +10,7 @@ import zenoh
 from zenoh_ros2_sdk import ROS2ServiceServer
 
 from .capture_backends import build_backend
-from .heartbeat import HeartbeatBroadcaster
+from .heartbeat import HeartbeatBroadcaster, PgwaamOnlineBroadcaster
 from .models import PiRuntimeSettings
 
 
@@ -53,10 +53,13 @@ class PiDslrRuntime:
             LOGGER.info("serving ROS 2 capture service on %s", self._settings.capture_service_name)
             heartbeat = HeartbeatBroadcaster(session, self._settings, capture_count=lambda: self._capture_count)
             heartbeat.start()
+            pgwaam = PgwaamOnlineBroadcaster(self._settings)
+            pgwaam.start()
             try:
                 while not self._stop_event.is_set():
                     time.sleep(0.25)
             finally:
+                pgwaam.stop()
                 heartbeat.stop()
                 service_server.close()
 

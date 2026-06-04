@@ -5,11 +5,28 @@ from pathlib import Path
 from typing import Any
 import json
 import re
+import socket
 
 
 def slugify_camera_name(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]+", "_", value.strip())
     return cleaned.strip("_") or "dslr"
+
+
+def default_device_id(camera_id: str | None = None) -> str:
+    """Derive a device id from the hostname, falling back to ``camera_id``.
+
+    The host's short name (``socket.gethostname()`` without any domain suffix)
+    is the natural fleet identity for the pgwaam online pulse. If the hostname
+    cannot be determined we fall back to ``camera_id`` so the device is still
+    addressable.
+    """
+    try:
+        host = socket.gethostname()
+    except Exception:  # pragma: no cover - platform dependent
+        host = ""
+    host = (host or "").strip().split(".")[0]
+    return host or (camera_id or "device")
 
 
 @dataclass(slots=True)
@@ -46,6 +63,30 @@ class MqttHeartbeatConfig:
 
 
 @dataclass(slots=True)
+class PgwaamOnlineConfig:
+    """pgwaam liveness pulse published on ``pgwaam/{device_id}/online``.
+
+    A small, dedicated MQTT channel (mirrors the ``MqttHeartbeatConfig`` shape so
+    it can reuse ``_MqttPublisher``). The pulse is a minimal JSON document
+    ``{device_id, status: "online", ts, host}`` published ``retain``ed by
+    default so a late-joining mothership subscriber immediately learns the
+    device's last-known online state.
+    """
+
+    enabled: bool = False
+    host: str = "172.31.1.252"
+    port: int = 1883
+    topic: str | None = None
+    qos: int = 0
+    retain: bool = True
+    keepalive: int = 60
+    interval_s: float = 5.0
+    username: str | None = None
+    password: str | None = None
+    client_id: str | None = None
+
+
+@dataclass(slots=True)
 class HeartbeatConfig:
     enabled: bool = True
     interval_s: float = 5.0
@@ -67,6 +108,8 @@ class PiRuntimeSettings:
     router_port: int | None = None
     publish_delay_ms: int = 0
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
+    device_id: str = field(default_factory=default_device_id)
+    pgwaam: PgwaamOnlineConfig = field(default_factory=PgwaamOnlineConfig)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "PiRuntimeSettings":
@@ -94,6 +137,9 @@ class PiRuntimeSettings:
 
         heartbeat = _heartbeat_from_payload(payload.get("heartbeat", {}), camera_id)
 
+        device_id = payload.get("device_id") or default_device_id(camera_id)
+        pgwaam = _pgwaam_from_payload(payload.get("pgwaam", {}), device_id)
+
         return cls(
             camera_id=camera_id,
             camera_model=camera_model,
@@ -106,6 +152,8 @@ class PiRuntimeSettings:
             router_port=payload.get("router_port"),
             publish_delay_ms=int(payload.get("publish_delay_ms", 0)),
             heartbeat=heartbeat,
+            device_id=device_id,
+            pgwaam=pgwaam,
         )
 
 
@@ -128,6 +176,22 @@ def _heartbeat_from_payload(payload: dict[str, Any], camera_id: str) -> Heartbea
         zenoh_key=payload.get("zenoh_key") or f"dslr/{camera_id}/heartbeat",
         liveliness_key=payload.get("liveliness_key") or f"dslr/{camera_id}/alive",
         mqtt=mqtt,
+    )
+
+
+def _pgwaam_from_payload(payload: dict[str, Any], device_id: str) -> PgwaamOnlineConfig:
+    return PgwaamOnlineConfig(
+        enabled=bool(payload.get("enabled", False)),
+        host=payload.get("host", "172.31.1.252"),
+        port=int(payload.get("port", 1883)),
+        topic=payload.get("topic") or f"pgwaam/{device_id}/online",
+        qos=int(payload.get("qos", 0)),
+        retain=bool(payload.get("retain", True)),
+        keepalive=int(payload.get("keepalive", 60)),
+        interval_s=float(payload.get("interval_s", 5.0)),
+        username=payload.get("username"),
+        password=payload.get("password"),
+        client_id=payload.get("client_id") or f"pgwaam-{device_id}-online",
     )
 
 

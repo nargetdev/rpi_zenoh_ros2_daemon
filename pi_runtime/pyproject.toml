@@ -17,6 +17,13 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest>=8.0",
+  # The pgwaam online-pulse integration test (tests/test_pgwaam_online_integration.py)
+  # runs a REAL MQTT broker on a dynamically-chosen free port. It prefers a local
+  # `mosquitto` binary (brew install mosquitto / apt install mosquitto); if that is
+  # absent the test skips with a clear reason. To make the test fully self-contained
+  # without a system mosquitto, install the optional pure-Python broker below and the
+  # test can be extended to launch it:
+  #   "amqtt>=0.11",
 ]
 
 [tool.setuptools]
