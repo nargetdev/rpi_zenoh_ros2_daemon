@@ -8,8 +8,10 @@
 #   (1) node-under-test : pico-ros-py publisher  -- NO ROS 2, just zenoh
 #                         publishes std_msgs/msg/Int64 = time.time_ns() on
 #                         /node_under_test/node_under_test/epoch_ns
+#   (1b) params         : pico-ros-py parameter server  -- NO ROS 2, just zenoh
+#                         serves the rcl_interfaces parameter API on /picoros_live
 #   (2) validator       : ROS 2 (kilted) + rmw_zenoh, stock `ros2` CLI -- the gate
-#                         ros2 topic echo node_under_test/node_under_test/epoch_ns
+#                         ros2 topic echo + ros2 param list/get/set/describe
 #
 # Run:
 #   docker compose -f live/docker-compose.yml up --build \
@@ -38,6 +40,17 @@ services:
     # Reach the external router on the LAN, not a compose-internal service.
     network_mode: host
 
+  # --- (1b) parameter server: pico-ros-py rcl_interfaces API (no ROS 2) -----
+  params:
+    image: pico-ros-py:live
+    command: ["python", "scripts/run_params_server.py"]
+    environment:
+      ROUTER_IP: ${ROUTER_IP:-172.31.1.102}
+      ROUTER_PORT: ${ROUTER_PORT:-7447}
+      NODE_NAME: ${PARAMS_NODE_NAME:-picoros_live}
+    depends_on: [node-under-test]   # reuse the image node-under-test builds
+    network_mode: host
+
   # --- (1) validator: stock ros2 CLI over rmw_zenoh; gates the run ----------
   validator:
     build:
@@ -54,5 +67,10 @@ services:
       NODE: /node_under_test/node_under_test
       TOPIC: /node_under_test/node_under_test/epoch_ns
       MSG_TYPE: std_msgs/msg/Int64
-    depends_on: [node-under-test]
+      PARAMS_NODE: /${PARAMS_NODE_NAME:-picoros_live}
+      PARAM: example.param1
+      PARAM_INIT: "10"
+      PARAM_NEW: "7"
+      PARAM_BAD: "9999"
+    depends_on: [node-under-test, params]
     network_mode: host
