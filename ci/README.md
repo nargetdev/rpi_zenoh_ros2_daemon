@@ -110,19 +110,22 @@ CPython host) with nothing but Zenoh.
 
 ## The integration superset
 
-`compose.integration.yml` keeps the four minimal-smoke containers and adds a
-fifth — **`dslr`**, the **real production `pi_runtime` daemon** — then gates on
-an extended verifier (`verifier/verify_integration.sh`):
+`compose.integration.yml` keeps the four minimal-smoke containers and adds two
+more — **`dslr`**, the **real production `pi_runtime` daemon**, and **`gateway`**,
+the colcon-built **`ros2_gateway`** relay (a real `rclpy` node that republishes
+`dslr`'s raw Zenoh frame blobs as native `sensor_msgs/msg/Image` +
+`CompressedImage` on `gw/` topics) — then gates on an extended verifier
+(`verifier/verify_integration.sh`):
 
 ```
         router  ── raw zenohd (eclipse/zenoh)              no ROS 2, just zenoh
-          ▲ ▲ ▲ ▲
-   ┌──────┘ │ │ └────────────────────────────────┐
- talker   params   dslr (REAL pi_runtime)      verifier
- /chatter /picoros • SetBool capture service   ROS 2 + rmw_zenoh
- (no ROS2)(no ROS2)• Float32 core_temp topic   stock ros2 CLI + rclpy raw=True
-                   • Image frames               = THE GATE
-                   mock CaptureBackend +
+          ▲ ▲ ▲ ▲ ▲
+   ┌──────┘ │ │ │ └──────────────────────────────────────────┐
+ talker   params   dslr (REAL pi_runtime)   gateway          verifier
+ /chatter /picoros • SetBool capture svc   (REAL rclpy)      ROS 2 + rmw_zenoh
+ (no ROS2)(no ROS2)• Float32 core_temp     • republishes     stock ros2 CLI +
+                   • native Image frames     Image on gw/*     rclpy raw=True
+                   mock CaptureBackend +    • ros2 params     = THE GATE
                    mock thermal_zone file
                    (no ROS 2, no hardware)
 ```
@@ -137,7 +140,7 @@ docker compose -f ci/compose.integration.yml up --build \
 
 Tear down: `docker compose -f ci/compose.integration.yml down -v`.
 
-### The five gates (`verifier/verify_integration.sh`)
+### The six gates (`verifier/verify_integration.sh`)
 
 | Gate | Requirement | How |
 |---|---|---|
@@ -145,7 +148,8 @@ Tear down: `docker compose -f ci/compose.integration.yml down -v`.
 | 2 | **topics + byte-level CDR** | `ros2 topic echo /chatter` **plus** `cdr_assert.py` asserts the exact CDR bytes (see below) |
 | 3 | **parameters** | `ros2 param list/get/set` round-trip + **out-of-range reject** on `/picoros` (`describe` is *not* gated) |
 | 4 | **service** | `ros2 service call /dslr/ci_cam/capture std_srvs/srv/SetBool "{data: true}"` returns `success=True` |
-| 5 | **native Image** | `ros2 topic echo /dslr/ci_cam/image_raw sensor_msgs/msg/Image` arrives with `encoding: rgb8` (semantic; the Gate-4 capture feeds it) |
+| 5 | **native Image (byte-level CDR)** | `cdr_assert.py --image` parses the raw FastCDR buffer on `/dslr/ci_cam/image_raw` and asserts width 640 / height 480 / `encoding: rgb8` / step 1920 — the exact bytes a native `rmw_zenoh_cpp` subscriber decodes (advisory unless `STRICT_IMAGE=1`, the default) |
+| 6 | **ros2_gateway relay** | the `gateway` node is in the graph, its four declared string params round-trip via `ros2 param get/set`, and its republished Image (`/dslr/ci_cam/gw/image_raw`) echoes a 640×480 `rgb8` frame (step 1920) |
 
 ### Byte-level CDR — why `rclpy raw=True`
 
@@ -160,6 +164,11 @@ produced, and asserts:
   of **≈ 48.3** (the mock thermal-zone file holds `48300` → `48.3 °C`).
 * **`std_msgs/msg/String`** `/chatter` — the same header, a `<I` length prefix, a
   **null-terminated** body decoding to the talker's greeting.
+* **`sensor_msgs/msg/Image`** `/dslr/ci_cam/image_raw` — `cdr_assert.py --image`
+  walks the FastCDR buffer (header → `frame_id` → height → width → encoding →
+  `is_bigendian` → step → data length) and asserts width 640 / height 480 /
+  `encoding: rgb8` / step 1920 and that the `data` array actually holds
+  `step × height` bytes.
 
 This is strictly stronger than `topic echo` and catches CDR / endianness /
 type-hash / transport regressions a semantic check would miss.
@@ -171,8 +180,11 @@ already ships** — `CaptureBackend` (`build_backend` dispatches on
 `capture_backend.type`) and `CoreTempPublishConfig.thermal_zone_path`. The mock
 boundary is **one config file**, [`config/dslr-mock.json`](config/dslr-mock.json):
 
-* `capture_backend.type: "mock"` → `MockCaptureBackend` returns a baked 1×1 PNG;
-  no `gphoto2`, no USB, no GPIO.
+* `capture_backend.type: "mock"` → `MockCaptureBackend` renders a date-stamped
+  **640×480 `rgb8`** frame via Pillow (the default, `mock_synthesize: true`), so
+  Gate 5's width/height/encoding/step assertions are meaningful; no `gphoto2`, no
+  USB, no GPIO. Set `mock_synthesize: false` for the legacy 1×1 placeholder PNG;
+  dimensions are tunable via `mock_width` / `mock_height`.
 * `core_temp_publish.thermal_zone_path: "/config/thermal_zone_temp"` → a mock
   sysfs file (`48300`) instead of `/sys/class/thermal/thermal_zone0/temp`.
 

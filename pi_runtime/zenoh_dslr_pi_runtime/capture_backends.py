@@ -31,6 +31,10 @@ def _synthesize_dated_png(width: int, height: int, date_str: str) -> bytes:
     bitmap font (no font-file dependency) and reference colored bars are added so
     the frame is visually distinguishable.
     """
+    if width <= 0 or height <= 0:
+        raise ValueError(
+            f"mock_width/mock_height must be positive, got {width}x{height}"
+        )
     image = PilImage.new("RGB", (width, height), (32, 32, 40))
     draw = ImageDraw.Draw(image)
 
@@ -147,6 +151,21 @@ class MockCaptureBackend(CaptureBackend):
         else:
             payload = MOCK_IMAGE_BYTES
         width, height = self._read_dimensions(payload)
+        # The synth path *generated* these bytes, so it can validate its own
+        # output against the known config dims instead of trusting the lenient
+        # _read_dimensions (which returns (0, 0) on any decode failure). This
+        # turns a silent Pillow encode/decode mismatch into an immediate,
+        # source-local error rather than a confusing downstream CDR dimension
+        # mismatch 90s later at the verifier.
+        if self._config.mock_synthesize and (width, height) != (
+            self._config.mock_width,
+            self._config.mock_height,
+        ):
+            raise RuntimeError(
+                f"synthesized mock frame decoded to {width}x{height}, expected "
+                f"{self._config.mock_width}x{self._config.mock_height} "
+                "(Pillow encode/decode mismatch?)"
+            )
         frame = self._finalize_capture(
             capture_id=capture_id,
             payload=payload,

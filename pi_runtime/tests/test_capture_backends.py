@@ -80,7 +80,12 @@ def test_mock_backend_captures_and_persists(tmp_path):
     import datetime
 
     settings = _settings(tmp_path, {"type": "mock", "encoding": "image/png"})
+    # Sample 'today' on BOTH sides of the capture: if the call and the assertion
+    # straddle local midnight the two clocks disagree, so accept either date and
+    # avoid a once-a-day spurious failure.
+    before = datetime.date.today().isoformat()
     frame = build_backend(settings).capture()
+    after = datetime.date.today().isoformat()
 
     assert frame.encoding == "image/png"  # the configured encoding
     assert (frame.width, frame.height) == (640, 480)  # synthesized default dims
@@ -89,7 +94,7 @@ def test_mock_backend_captures_and_persists(tmp_path):
         assert im.size == (640, 480)
         assert im.convert("RGB").mode == "RGB"
     # date stamp is observable downstream and is today's YYYY-MM-DD
-    assert frame.metadata["synthesized_date"] == datetime.date.today().isoformat()
+    assert frame.metadata["synthesized_date"] in {before, after}
     assert frame.metadata["camera_id"] == "Canon_EOS_6D"
     assert frame.metadata["camera_model"] == "Canon EOS 6D"
     assert frame.image_key == f"dslr/Canon_EOS_6D/frames/{frame.capture_id}"
@@ -111,6 +116,37 @@ def test_mock_backend_legacy_placeholder(tmp_path):
     persisted = Path(frame.metadata["persisted_path"])
     assert persisted.exists()
     assert persisted.read_bytes() == capture_backends.MOCK_IMAGE_BYTES
+
+
+def test_mock_backend_honors_custom_dimensions(tmp_path):
+    """Custom mock_width/mock_height flow JSON -> from_file -> synthesized frame.
+
+    Pins the invariant G5 depends on (width drives step = width*3); a regression
+    that dropped the keys would silently fall back to 640x480 and slip through.
+    """
+    settings = _settings(
+        tmp_path,
+        {"type": "mock", "encoding": "image/png", "mock_width": 320, "mock_height": 240},
+    )
+    frame = build_backend(settings).capture()
+
+    assert (frame.width, frame.height) == (320, 240)
+    with PilImage.open(io.BytesIO(frame.payload)) as im:
+        assert im.size == (320, 240)
+
+
+def test_capture_backend_rejects_unknown_key(tmp_path):
+    """CaptureBackendConfig is slots=True + built via **payload, so a typo'd key
+    (e.g. ``mock_widht``) is a fail-fast TypeError, not a silently-ignored field."""
+    with pytest.raises(TypeError):
+        _settings(tmp_path, {"type": "mock", "mock_widht": 640})  # typo'd key
+
+
+def test_synthesize_dated_png_rejects_nonpositive_dims():
+    """Bad dims fail fast at the source with a message that names the knobs,
+    rather than emitting a degenerate 0-area frame that surfaces far downstream."""
+    with pytest.raises(ValueError, match="must be positive"):
+        capture_backends._synthesize_dated_png(0, 480, "2026-01-02")
 
 
 # ---- command backend ------------------------------------------------------

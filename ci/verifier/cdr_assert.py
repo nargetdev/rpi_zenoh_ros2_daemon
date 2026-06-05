@@ -8,7 +8,7 @@ an rclpy **raw** subscription (`raw=True`), which delivers the exact serialized
 CDR buffer the real discovery/transport path produced -- no hand-computed Zenoh
 keys, no SDK on the validator side. It is strictly stronger than `topic echo`.
 
-Two assertions, both gating CI by exit code (non-zero on any mismatch):
+Assertions, all gating CI by exit code (non-zero on any mismatch):
 
   1. std_msgs/msg/Float32 on the core-temp topic (real pi_runtime daemon):
        * buf[0:4] == 00 01 00 00   (PLAIN CDR, little-endian encapsulation header)
@@ -16,6 +16,10 @@ Two assertions, both gating CI by exit code (non-zero on any mismatch):
   2. std_msgs/msg/String on /chatter (pico-ros-py talker):
        * buf[0:4] == 00 01 00 00
        * <I length prefix, null-terminated body, decodes to the talker greeting
+  3. sensor_msgs/msg/Image on the native Image topic (run via `--image`):
+       * buf[0:4] == 00 01 00 00, then a hand-walked FastCDR field decode
+       * width/height/encoding/step match the expected mock dims and the data
+         array holds step*height bytes
 
 Env knobs (with defaults): CORE_TEMP_TOPIC, CHATTER_TOPIC, TEMP_EXPECT, TEMP_TOL,
 CDR_TIMEOUT (per-topic seconds).
@@ -197,8 +201,9 @@ def assert_image(buf: bytes) -> None:
         pos += 4
         # encoding string.
         encoding, pos = _read_cdr_string(body, pos)
-        # is_bigendian uint8 (1-byte aligned).
-        is_bigendian = body[pos]
+        # is_bigendian uint8 (1-byte aligned). Read via unpack_from so a buffer
+        # truncated at this offset surfaces as struct.error, not a bare IndexError.
+        is_bigendian = struct.unpack_from("<B", body, pos)[0]
         pos += 1
         # step uint32 (4-byte aligned -- skips padding after is_bigendian).
         pos = _align(pos, 4)
@@ -208,8 +213,19 @@ def assert_image(buf: bytes) -> None:
         pos = _align(pos, 4)
         data_len = struct.unpack_from("<I", body, pos)[0]
         pos += 4
-    except struct.error as exc:
-        fail(f"{IMAGE_TOPIC}: truncated Image CDR buffer: {exc}")
+    except (struct.error, IndexError, UnicodeDecodeError) as exc:
+        # Any malformation (truncation, misalignment, non-UTF-8 string field)
+        # routes through fail() for a clean, greppable diagnosis rather than a
+        # raw traceback -- the gate must fail loudly and legibly.
+        fail(f"{IMAGE_TOPIC}: malformed Image CDR buffer: {exc}")
+    # The declared data array length is only meaningful if the buffer physically
+    # holds that many payload bytes; a truncated/fragmented frame that merely
+    # *claims* step*height bytes must not pass a "byte-level" gate.
+    if len(body) - pos < data_len:
+        fail(
+            f"{IMAGE_TOPIC}: data array declares {data_len} bytes but only "
+            f"{len(body) - pos} remain in the buffer (truncated frame)"
+        )
     log(
         f"{IMAGE_TOPIC}: decoded Image frame_id={frame_id!r} {width}x{height} "
         f"encoding={encoding!r} is_bigendian={is_bigendian} step={step} data_len={data_len}"

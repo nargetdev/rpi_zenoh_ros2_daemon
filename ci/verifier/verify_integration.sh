@@ -162,10 +162,24 @@ log "GATE 4 ok: REAL pi_runtime SetBool capture service returned success + JSON 
 # per capture, so a fresh frame must land WHILE the raw subscriber/echo is alive.
 # Drive repeated captures (~every 2s) for the duration of the Image gates.
 start_capture_loop() {
-  ( for _ in $(seq 1 90); do
-      timeout 12 ros2 service call "$CAPTURE_SERVICE" std_srvs/srv/SetBool "{data: true}" >/dev/null 2>&1
+  local logf; logf="$(mktemp)"
+  ( fails=0
+    for _ in $(seq 1 90); do
+      if ! timeout 12 ros2 service call "$CAPTURE_SERVICE" \
+             std_srvs/srv/SetBool "{data: true}" >>"$logf" 2>&1; then
+        fails=$((fails + 1))
+      fi
       sleep 2
-    done ) &
+    done
+    # Leave a breadcrumb so a timed-out Image gate is debuggable: if every (or
+    # any) capture call failed, the Image gate's "no message in 90s" is a
+    # downstream symptom, not the root cause. Surface the last output instead of
+    # discarding it (the rest of this script echoes service-call output too).
+    if [ "$fails" -gt 0 ]; then
+      echo "[verify] capture-loop: $fails capture call(s) failed; last output:" >&2
+      tail -n 20 "$logf" | sed 's/^/    /' >&2
+    fi
+    rm -f "$logf" ) &
   echo $!
 }
 
