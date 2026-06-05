@@ -12,11 +12,21 @@ dependencies = [
   "Pillow>=9.0.0",
   "zenoh-ros2-sdk>=0.1.0",
   "paho-mqtt>=1.6,<3.0",
+  # Required by the native ROS 2 Image publisher: rosbags' CDR serializer calls
+  # .view() on uint8[] array fields, so Image.data must be a numpy array.
+  "numpy>=1.21",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=8.0",
+  # The pgwaam online-pulse integration test (tests/test_pgwaam_online_integration.py)
+  # runs a REAL MQTT broker on a dynamically-chosen free port. It prefers a local
+  # `mosquitto` binary (brew install mosquitto / apt install mosquitto); if that is
+  # absent the test skips with a clear reason. To make the test fully self-contained
+  # without a system mosquitto, install the optional pure-Python broker below and the
+  # test can be extended to launch it:
+  #   "amqtt>=0.11",
 ]
 
 [tool.setuptools]

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -643,6 +643,8 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "eclipse-zenoh" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "paho-mqtt" },
     { name = "pillow" },
     { name = "zenoh-ros2-sdk" },
@@ -656,6 +658,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "eclipse-zenoh", specifier = ">=1.0,<2.0" },
+    { name = "numpy", specifier = ">=1.21" },
     { name = "paho-mqtt", specifier = ">=1.6,<3.0" },
     { name = "pillow", specifier = ">=9.0.0" },
     { name = "zenoh-ros2-sdk", specifier = ">=0.1.0" },

@@ -1,6 +1,7 @@
 {
   "camera_model": "Canon EOS M50",
   "camera_id": "Canon_EOS_M50",
+  "device_id": "pi3m50",
   "capture_service_name": "/dslr/Canon_EOS_M50/capture",
   "frame_key_prefix": "dslr/Canon_EOS_M50/frames",
   "zenoh_config_path": "../../deploy/pi/zenoh-client.json5",

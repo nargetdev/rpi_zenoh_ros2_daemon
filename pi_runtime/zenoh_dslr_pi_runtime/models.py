@@ -5,11 +5,28 @@ from pathlib import Path
 from typing import Any
 import json
 import re
+import socket
 
 
 def slugify_camera_name(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]+", "_", value.strip())
     return cleaned.strip("_") or "dslr"
+
+
+def default_device_id(camera_id: str | None = None) -> str:
+    """Derive a device id from the hostname, falling back to ``camera_id``.
+
+    The host's short name (``socket.gethostname()`` without any domain suffix)
+    is the natural fleet identity for the pgwaam online pulse. If the hostname
+    cannot be determined we fall back to ``camera_id`` so the device is still
+    addressable.
+    """
+    try:
+        host = socket.gethostname()
+    except Exception:  # pragma: no cover - platform dependent
+        host = ""
+    host = (host or "").strip().split(".")[0]
+    return host or (camera_id or "device")
 
 
 @dataclass(slots=True)
@@ -46,6 +63,55 @@ class MqttHeartbeatConfig:
 
 
 @dataclass(slots=True)
+class PgwaamOnlineConfig:
+    """pgwaam liveness pulse published on ``pgwaam/{device_id}/online``.
+
+    A small, dedicated MQTT channel (mirrors the ``MqttHeartbeatConfig`` shape so
+    it can reuse ``_MqttPublisher``). The pulse is a minimal JSON document
+    ``{device_id, status: "online", ts, host}`` published ``retain``ed by
+    default so a late-joining mothership subscriber immediately learns the
+    device's last-known online state.
+    """
+
+    enabled: bool = False
+    host: str = "172.31.1.252"
+    port: int = 1883
+    topic: str | None = None
+    qos: int = 0
+    retain: bool = True
+    keepalive: int = 60
+    interval_s: float = 5.0
+    username: str | None = None
+    password: str | None = None
+    client_id: str | None = None
+
+
+@dataclass(slots=True)
+class Ros2PublishConfig:
+    """Native ROS 2 ``sensor_msgs/msg/Image`` publication over rmw_zenoh.
+
+    When ``enabled``, captured frames are published a second time (alongside the
+    existing raw Zenoh blob ``put``) as a native CDR-encoded ``sensor_msgs/msg/Image``
+    via ``zenoh_ros2_sdk.ROS2Publisher``. This is the one-hop path that ``soma``'s
+    rmw_zenoh router + ``foxglove_bridge`` (or any ROS 2 node) can display directly,
+    retiring the separate ``ros2_gateway`` relay for images.
+
+    SHARED CONTRACT: this block must match the ansible side EXACTLY.
+    """
+
+    enabled: bool = False
+    topic: str | None = None
+    encoding: str = "rgb8"
+    max_width: int = 640
+    max_height: int = 480
+    domain_id: int = 0
+    router_ip: str = "172.31.1.252"
+    router_port: int = 7447
+    qos_reliability: str = "reliable"
+    qos_history_depth: int = 5
+
+
+@dataclass(slots=True)
 class HeartbeatConfig:
     enabled: bool = True
     interval_s: float = 5.0
@@ -70,6 +136,9 @@ class PiRuntimeSettings:
     router_port: int | None = None
     publish_delay_ms: int = 0
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
+    device_id: str = field(default_factory=default_device_id)
+    pgwaam: PgwaamOnlineConfig = field(default_factory=PgwaamOnlineConfig)
+    ros2_publish: Ros2PublishConfig = field(default_factory=Ros2PublishConfig)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "PiRuntimeSettings":
@@ -97,6 +166,11 @@ class PiRuntimeSettings:
 
         heartbeat = _heartbeat_from_payload(payload.get("heartbeat", {}), camera_id)
 
+        device_id = payload.get("device_id") or default_device_id(camera_id)
+        pgwaam = _pgwaam_from_payload(payload.get("pgwaam", {}), device_id)
+
+        ros2_publish = _ros2_publish_from_payload(payload.get("ros2_publish", {}), camera_id)
+
         return cls(
             camera_id=camera_id,
             camera_model=camera_model,
@@ -109,6 +183,9 @@ class PiRuntimeSettings:
             router_port=payload.get("router_port"),
             publish_delay_ms=int(payload.get("publish_delay_ms", 0)),
             heartbeat=heartbeat,
+            device_id=device_id,
+            pgwaam=pgwaam,
+            ros2_publish=ros2_publish,
         )
 
 
@@ -134,6 +211,37 @@ def _heartbeat_from_payload(payload: dict[str, Any], camera_id: str) -> Heartbea
         report_throttled=bool(payload.get("report_throttled", True)),
         thermal_zone_path=payload.get("thermal_zone_path", "/sys/class/thermal/thermal_zone0/temp"),
         mqtt=mqtt,
+    )
+
+
+def _pgwaam_from_payload(payload: dict[str, Any], device_id: str) -> PgwaamOnlineConfig:
+    return PgwaamOnlineConfig(
+        enabled=bool(payload.get("enabled", False)),
+        host=payload.get("host", "172.31.1.252"),
+        port=int(payload.get("port", 1883)),
+        topic=payload.get("topic") or f"pgwaam/{device_id}/online",
+        qos=int(payload.get("qos", 0)),
+        retain=bool(payload.get("retain", True)),
+        keepalive=int(payload.get("keepalive", 60)),
+        interval_s=float(payload.get("interval_s", 5.0)),
+        username=payload.get("username"),
+        password=payload.get("password"),
+        client_id=payload.get("client_id") or f"pgwaam-{device_id}-online",
+    )
+
+
+def _ros2_publish_from_payload(payload: dict[str, Any], camera_id: str) -> Ros2PublishConfig:
+    return Ros2PublishConfig(
+        enabled=bool(payload.get("enabled", False)),
+        topic=payload.get("topic") or f"/dslr/{camera_id}/image_raw",
+        encoding=payload.get("encoding", "rgb8"),
+        max_width=int(payload.get("max_width", 640)),
+        max_height=int(payload.get("max_height", 480)),
+        domain_id=int(payload.get("domain_id", 0)),
+        router_ip=payload.get("router_ip", "172.31.1.252"),
+        router_port=int(payload.get("router_port", 7447)),
+        qos_reliability=payload.get("qos_reliability", "reliable"),
+        qos_history_depth=int(payload.get("qos_history_depth", 5)),
     )
 
 

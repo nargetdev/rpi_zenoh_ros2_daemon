@@ -81,6 +81,26 @@ def build_heartbeat_payload(
     }
 
 
+def build_pgwaam_online_payload(
+    settings: PiRuntimeSettings,
+    *,
+    now: float | None = None,
+    hostname: str | None = None,
+) -> dict[str, Any]:
+    """Build the minimal pgwaam online pulse for this device.
+
+    A small JSON document is used (rather than a bare ``"online"`` string) so the
+    mothership can attribute the pulse to a device and reason about staleness via
+    ``ts`` without a side channel.
+    """
+    return {
+        "device_id": settings.device_id,
+        "status": "online",
+        "host": hostname if hostname is not None else socket.gethostname(),
+        "ts": now if now is not None else time.time(),
+    }
+
+
 class _MqttPublisher:
     """Lazy, failure-tolerant MQTT publisher. A down broker never breaks the runtime."""
 
@@ -118,7 +138,8 @@ class _MqttPublisher:
         if client is None:
             return False
         try:
-            client.publish(self._config.topic, payload, qos=self._config.qos)
+            retain = bool(getattr(self._config, "retain", False))
+            client.publish(self._config.topic, payload, qos=self._config.qos, retain=retain)
             return True
         except Exception as exc:  # pragma: no cover - network dependent
             LOGGER.debug("MQTT publish failed: %s", exc)
@@ -214,5 +235,60 @@ class HeartbeatBroadcaster:
             except Exception:  # pragma: no cover - best effort
                 pass
             self._liveliness_token = None
+        if self._mqtt is not None:
+            self._mqtt.close()
+
+
+class PgwaamOnlineBroadcaster:
+    """Publishes a periodic 'pgwaam online' liveness pulse over MQTT.
+
+    Focused, independent of the Zenoh-coupled :class:`HeartbeatBroadcaster`: it
+    only needs a configured MQTT broker, so it runs anywhere on the Pi. Reuses
+    the failure-tolerant :class:`_MqttPublisher`, so a down broker never crashes
+    the runtime.
+    """
+
+    def __init__(self, settings: PiRuntimeSettings) -> None:
+        self._settings = settings
+        self._cfg = settings.pgwaam
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._mqtt = _MqttPublisher(self._cfg) if self._cfg.enabled else None
+
+    def start(self) -> None:
+        if not self._cfg.enabled or self._mqtt is None:
+            LOGGER.info("pgwaam online pulse disabled by config")
+            return
+        # Emit one pulse immediately so the mothership learns we're online
+        # without waiting a full interval, then continue periodically.
+        self.publish_once()
+        self._thread = threading.Thread(target=self._loop, name="pgwaam-online", daemon=True)
+        self._thread.start()
+        LOGGER.info(
+            "pgwaam online pulse started: topic=%s broker=%s:%s interval=%ss",
+            self._cfg.topic,
+            self._cfg.host,
+            self._cfg.port,
+            self._cfg.interval_s,
+        )
+
+    def publish_once(self) -> bool:
+        if self._mqtt is None:
+            return False
+        payload = json.dumps(build_pgwaam_online_payload(self._settings))
+        return self._mqtt.publish(payload)
+
+    def _loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._stop_event.wait(self._cfg.interval_s)
+            if self._stop_event.is_set():
+                break
+            self.publish_once()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
         if self._mqtt is not None:
             self._mqtt.close()
