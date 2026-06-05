@@ -1,3 +1,5 @@
+> Historical — superseded by the native rmw_zenoh path (Track B). Kept for reference only.
+
 # `zenoh_ros2_sdk` Assessment
 
 This project has two plausible implementation tracks.

@@ -1,3 +1,5 @@
+> Historical — superseded by the native rmw_zenoh path (Track B). Kept for reference only.
+
 # Plugin-Native ROS 2 Service Notes
 
 This note captures the next step if we want the Raspberry Pi queryable to appear directly as a ROS 2 service server through `zenoh-plugin-ros2dds`, without the ROS 2 gateway acting as the service adapter.

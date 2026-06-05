@@ -124,7 +124,7 @@ The Pi config opt-in block (must match the ansible side exactly):
 
 ## Why `std_srvs/SetBool`
 
-The pure-ROS service surface now comes from `zenoh_ros2_sdk`, which is a much better fit for `rmw_zenoh` than the previous CycloneDDS plugin path.
+The pure-ROS service surface now comes from `zenoh_ros2_sdk`, which is the canonical pure-ROS service surface for `rmw_zenoh`.
 
 For the first cut, the capture request uses `std_srvs/srv/SetBool` so the Pi can expose a standard ROS 2 service type without a ROS 2 install or custom interface packaging on the edge device. The request body is a simple `bool data`, and the response message carries JSON metadata for the capture acknowledgment.
 
@@ -226,5 +226,3 @@ ros2 run zenoh_dslr_gateway capture_client --ros-args -p service_name:=/dslr/Can
 
 - The `gphoto2` backend assumes the camera is configured to save JPEGs if you want the relay to decode and publish `sensor_msgs/msg/Image`.
 - The Pi runtime persists the captured files locally in a rolling buffer, with `persisted_path` included in the service response metadata.
-- The previous `CycloneDDS + zenoh-plugin-ros2dds` adapter path is kept only as reference in `docs/`.
-- See [docs/zenoh_ros2_sdk_assessment.md](/Users/mswhiskers/Documents/raspberry-dslr-service-zenoh/docs/zenoh_ros2_sdk_assessment.md:1) for the earlier comparison between the two middleware strategies.
