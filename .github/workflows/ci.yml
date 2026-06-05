@@ -20,6 +20,36 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  # Fast pure-Python gate. The Docker interop job below boots the real daemon,
+  # but it is slow and only catches import/syntax breakage *indirectly* (a
+  # daemon that won't import won't boot). This job is the direct, fail-fast
+  # guard: `compileall` catches the build-breaking SyntaxError class that
+  # reached `main` via PR #9 (both models.py and runtime.py were unimportable),
+  # and pytest runs the existing pi_runtime / pico-ros-py unit suites that were
+  # never executed by automation before.
+  unit-tests:
+    name: pure-Python unit tests (pi_runtime + pico-ros-py)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Syntax guard (catches unimportable modules before anything else)
+        run: python -m compileall -q pi_runtime/zenoh_dslr_pi_runtime pico-ros-py
+
+      - name: Install packages + pytest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pico-ros-py ./pi_runtime pytest
+
+      - name: Run unit tests
+        # mosquitto is not installed on the runner, so the pgwaam MQTT
+        # end-to-end test skips itself with a clear reason (by design).
+        run: python -m pytest pi_runtime/tests pico-ros-py/tests -v
+
   ros2-interop:
     name: ros2 CLI + raw-CDR verifies raw-zenoh daemons (incl. real pi_runtime)
     runs-on: ubuntu-latest
