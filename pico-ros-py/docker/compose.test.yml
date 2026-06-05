@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Hermetic end-to-end harness for pico-ros-py.
+#
+# Three separate containers on a private Docker network, mirroring the
+# Raspberry Pi <-> Arch-master split: each role has its own network namespace
+# and its own Zenoh session, and they discover each other ONLY through the
+# Zenoh router -- never via shared process/memory.
+#
+#   zenohd          : the Zenoh router (stand-in for the LAN/tailscale router)
+#   params-server   : the "pi daemon" -- pico-ros-py ParameterServer
+#   validator       : the "master"    -- drives list/get/set and gates the run
+#
+# Run:
+#   docker compose -f docker/compose.test.yml up --build \
+#       --abort-on-container-exit --exit-code-from validator
+#
+# Exit code == validator's exit code (0 = SMOKE OK).
+name: pico-ros-py-test
+
+services:
+  zenohd:
+    image: ${ZENOH_IMAGE:-eclipse/zenoh:latest}
+    command: ["-l", "tcp/0.0.0.0:7447"]
+    networks: [picoros]
+
+  params-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: pico-ros-py:test
+    command: ["python", "scripts/run_params_server.py"]
+    environment:
+      ROUTER_IP: zenohd
+      ROUTER_PORT: "7447"
+      NODE_NAME: picoros
+    depends_on: [zenohd]
+    networks: [picoros]
+
+  validator:
+    image: pico-ros-py:test
+    command: ["python", "scripts/smoke_test.py"]
+    environment:
+      ROUTER_IP: zenohd
+      ROUTER_PORT: "7447"
+      TARGET_NODE: picoros
+    depends_on: [zenohd, params-server]
+    networks: [picoros]
+
+networks:
+  picoros:
+    driver: bridge

@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Minimal rmw_zenoh *session* config for the verifier container.
+//
+// Why a hand-written config instead of rmw_zenoh's shipped default:
+//   1. We point the session at the external raw `zenohd` router (the `router`
+//      service) explicitly, instead of relying on multicast/gossip scouting.
+//   2. The default DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5 shipped with some
+//      rmw_zenoh builds carries a `shared_memory.transport_optimization` field
+//      that the bundled zenoh-c refuses to parse (version drift). A minimal
+//      config sidesteps that entirely -- unknown fields are the problem, never
+//      missing ones (they just take defaults).
+//
+// rmw_zenoh reads this when ZENOH_SESSION_CONFIG_URI points at it.
+{
+  // Connect straight to the router; no DDS, no local rmw_zenohd.
+  mode: "client",
+  connect: {
+    endpoints: ["tcp/router:7447"],
+  },
+  // Deterministic CI: discover peers only through the configured router.
+  scouting: {
+    multicast: { enabled: false },
+  },
+  // Disable POSIX shared-memory zero-copy. It only helps same-host transport,
+  // and zenoh-c fails to allocate an SHM segment in Docker's small /dev/shm
+  // ("Unable to create POSIX shm segment: OS error 12"). We talk TCP only.
+  transport: {
+    shared_memory: { enabled: false },
+  },
+}

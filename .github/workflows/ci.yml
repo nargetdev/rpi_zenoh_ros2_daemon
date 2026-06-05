@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+# Self-contained ROS 2 interop CI: prove that pure-zenoh pico-ros-py daemons
+# (no ROS 2 installed) are visible & controllable from the stock `ros2` CLI,
+# federating only through a raw `zenohd` router.
+#
+# The gate is the `verifier` container's exit code (see ci/verify.sh):
+#   GATE 1  ros2 node list   -> heartbeat / enumeration
+#   GATE 2  ros2 topic echo  -> topics
+#   GATE 3  ros2 param get|set -> parameters
+name: ci
+
+on:
+  push:
+    paths: ["ci/**", "pico-ros-py/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["ci/**", "pico-ros-py/**", ".github/workflows/ci.yml"]
+  workflow_dispatch: {}
+
+jobs:
+  ros2-interop:
+    name: ros2 CLI verifies raw-zenoh daemons
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bring up harness and gate on the ros2 verifier
+        run: |
+          docker compose -f ci/compose.yml up --build \
+            --abort-on-container-exit --exit-code-from verifier
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose -f ci/compose.yml logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f ci/compose.yml down -v

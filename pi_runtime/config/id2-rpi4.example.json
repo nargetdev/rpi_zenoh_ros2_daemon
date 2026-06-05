@@ -21,6 +21,8 @@
   "heartbeat": {
     "enabled": true,
     "interval_s": 5.0,
+    "report_core_temp": true,
+    "report_throttled": true,
     "mqtt": {
       "enabled": true,
       "host": "172.31.1.252",

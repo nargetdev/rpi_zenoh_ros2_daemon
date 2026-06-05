@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# CI for pico-ros-py. Two gates:
+#   1. offline unit tests (pure-Python types + backend), no zenoh/ROS needed
+#   2. hermetic end-to-end: zenohd + param server + validator in containers,
+#      emulating the Raspberry Pi <-> master split over a Zenoh router.
+#
+# This lives under pico-ros-py/.github so it travels when the project is split
+# into its own repository. (GitHub Actions runs workflows from the repo root's
+# .github/workflows — move/symlink this up, or set the workflow path, when split.)
+name: pico-ros-py CI
+
+on:
+  push:
+    paths: ["pico-ros-py/**"]
+  pull_request:
+    paths: ["pico-ros-py/**"]
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: pico-ros-py
+
+jobs:
+  unit:
+    name: offline unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (dev)
+        run: pip install -e '.[dev]'
+      - name: Pytest (pure-Python core)
+        run: pytest -q
+
+  e2e:
+    name: hermetic end-to-end (router + pi daemon + master)
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the hermetic harness
+        run: |
+          docker compose -f docker/compose.test.yml up --build \
+            --abort-on-container-exit --exit-code-from validator
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker/compose.test.yml down -v

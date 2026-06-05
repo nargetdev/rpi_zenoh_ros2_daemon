@@ -117,6 +117,9 @@ class HeartbeatConfig:
     interval_s: float = 5.0
     zenoh_key: str | None = None
     liveliness_key: str | None = None
+    report_core_temp: bool = True
+    report_throttled: bool = True
+    thermal_zone_path: str = "/sys/class/thermal/thermal_zone0/temp"
     mqtt: MqttHeartbeatConfig = field(default_factory=MqttHeartbeatConfig)
 
 
@@ -204,6 +207,9 @@ def _heartbeat_from_payload(payload: dict[str, Any], camera_id: str) -> Heartbea
         interval_s=float(payload.get("interval_s", 5.0)),
         zenoh_key=payload.get("zenoh_key") or f"dslr/{camera_id}/heartbeat",
         liveliness_key=payload.get("liveliness_key") or f"dslr/{camera_id}/alive",
+        report_core_temp=bool(payload.get("report_core_temp", True)),
+        report_throttled=bool(payload.get("report_throttled", True)),
+        thermal_zone_path=payload.get("thermal_zone_path", "/sys/class/thermal/thermal_zone0/temp"),
         mqtt=mqtt,
     )
 

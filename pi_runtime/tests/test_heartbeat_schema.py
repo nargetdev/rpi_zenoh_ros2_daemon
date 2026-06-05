@@ -3,7 +3,11 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from zenoh_dslr_pi_runtime.heartbeat import HeartbeatBroadcaster, build_heartbeat_payload
+from zenoh_dslr_pi_runtime.heartbeat import (
+    HeartbeatBroadcaster,
+    build_heartbeat_payload,
+    read_core_temp_c,
+)
 from zenoh_dslr_pi_runtime.models import PiRuntimeSettings
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "id2-rpi4.example.json"
@@ -60,7 +64,15 @@ def test_heartbeat_defaults_derived_from_camera_id():
 
 def test_build_heartbeat_payload_shape():
     settings = PiRuntimeSettings.from_file(CONFIG)
-    payload = build_heartbeat_payload(settings, seq=3, capture_count=7, now=1_700_000_000.0, hostname="notbroken")
+    payload = build_heartbeat_payload(
+        settings,
+        seq=3,
+        capture_count=7,
+        now=1_700_000_000.0,
+        hostname="notbroken",
+        core_temp_c=48.3,
+        throttled="0x0",
+    )
     assert payload == {
         "status": "alive",
         "camera_id": "Canon_EOS_6D",
@@ -72,10 +84,29 @@ def test_build_heartbeat_payload_shape():
         "capture_count": 7,
         "ts": 1_700_000_000.0,
         "interval_s": 5.0,
+        "core_temp_c": 48.3,
+        "throttled": "0x0",
     }
 
     out = _artifacts_dir() / "test_heartbeat_schema_pydantic.json"
     out.write_text(json.dumps({"settings": asdict(settings), "sample_heartbeat": payload}, indent=2, default=str))
+
+
+def test_build_heartbeat_payload_temp_defaults_to_none():
+    settings = PiRuntimeSettings.from_file(CONFIG)
+    payload = build_heartbeat_payload(settings, seq=0)
+    assert payload["core_temp_c"] is None
+    assert payload["throttled"] is None
+
+
+def test_read_core_temp_c_parses_millidegrees(tmp_path):
+    zone = tmp_path / "temp"
+    zone.write_text("48300\n")
+    assert read_core_temp_c(str(zone)) == 48.3
+
+
+def test_read_core_temp_c_missing_path_returns_none(tmp_path):
+    assert read_core_temp_c(str(tmp_path / "does_not_exist")) is None
 
 
 def test_broadcaster_publishes_zenoh_heartbeat_and_liveliness():

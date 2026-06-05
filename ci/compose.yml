@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Self-contained, ROS-2-free-daemon CI harness.
+#
+# Four containers on a private bridge network, each with its own Zenoh session;
+# they discover each other ONLY through the raw `zenohd` router:
+#
+#     router   : raw zenohd (eclipse/zenoh)        -- no ROS 2, just zenoh
+#       |
+#       |-- talker : pico-ros-py publisher node    -- no ROS 2, just zenoh
+#       |-- params : pico-ros-py parameter server  -- no ROS 2, just zenoh
+#       |
+#     verifier : ROS 2 + rmw_zenoh, stock `ros2` CLI -- the gate
+#
+# The two daemons (talker, params) contain NO ROS 2 -- pure zenoh_ros2_sdk.
+# The verifier is the only place ROS 2 exists, and its transport is rmw_zenoh
+# (raw zenoh, no DDS). It proves the daemons are real ROS 2 citizens.
+#
+# Run:
+#   docker compose -f ci/compose.yml up --build \
+#       --abort-on-container-exit --exit-code-from verifier
+#   # exit 0  == ":::: ALL VERIFY GATES PASSED ::::"
+name: rpi-zenoh-ros2-ci
+
+services:
+  # --- raw zenoh router: the only thing on the data path; no ROS 2 ----------
+  router:
+    image: ${ZENOH_IMAGE:-eclipse/zenoh:latest}
+    command: ["-l", "tcp/0.0.0.0:7447"]
+    networks: [ros2zenoh]
+
+  # --- pico-ros-py talker daemon (no ROS 2): node heartbeat + /chatter ------
+  talker:
+    build:
+      context: ../pico-ros-py
+      dockerfile: docker/Dockerfile
+    image: pico-ros-py:ci
+    command: ["python", "scripts/run_talker.py"]
+    environment:
+      ROUTER_IP: router
+      ROUTER_PORT: "7447"
+      NODE_NAME: pico_talker
+      TOPIC: /chatter
+      RATE_HZ: "2"
+    depends_on: [router]
+    networks: [ros2zenoh]
+
+  # --- pico-ros-py parameter-server daemon (no ROS 2): node /picoros --------
+  params:
+    image: pico-ros-py:ci
+    command: ["python", "scripts/run_params_server.py"]
+    environment:
+      ROUTER_IP: router
+      ROUTER_PORT: "7447"
+      NODE_NAME: picoros
+    depends_on: [router, talker]   # reuse the image talker builds
+    networks: [ros2zenoh]
+
+  # --- ROS 2 verifier: stock `ros2` CLI over rmw_zenoh; gates the run -------
+  verifier:
+    build:
+      context: .
+      dockerfile: verifier/Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-kilted}
+    image: rpi-zenoh-ros2-verifier:ci
+    # Backup for zenoh-c's SHM probe; SHM is also disabled in the session config.
+    shm_size: "512m"
+    environment:
+      TALKER_NODE: /pico_talker
+      PARAMS_NODE: /picoros
+      TOPIC: /chatter
+      PARAM: example.param1
+      PARAM_INIT: "10"
+      PARAM_NEW: "7"
+    depends_on: [router, talker, params]
+    networks: [ros2zenoh]
+
+networks:
+  ros2zenoh:
+    driver: bridge

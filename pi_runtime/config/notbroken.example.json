@@ -1,0 +1,30 @@
+{
+  "camera_model": "notbroken node",
+  "camera_id": "node_notbroken",
+  "capture_service_name": "/dslr/node_notbroken/capture",
+  "frame_key_prefix": "dslr/node_notbroken/frames",
+  "zenoh_config_path": "../../deploy/pi/zenoh-client.json5",
+  "router_ip": "172.31.1.252",
+  "router_port": 7447,
+  "capture_backend": {
+    "type": "mock",
+    "encoding": "image/png"
+  },
+  "persistence": {
+    "enabled": false,
+    "directory": "./captures/node_notbroken",
+    "max_bytes": 104857600
+  },
+  "publish_delay_ms": 0,
+  "heartbeat": {
+    "enabled": true,
+    "interval_s": 5.0,
+    "report_core_temp": true,
+    "report_throttled": true,
+    "mqtt": {
+      "enabled": true,
+      "host": "172.31.1.252",
+      "port": 1883
+    }
+  }
+}

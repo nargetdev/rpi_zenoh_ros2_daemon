@@ -19,11 +19,15 @@
     "max_bytes": 754974720
   },
   "publish_delay_ms": 0,
-  "pgwaam": {
+  "heartbeat": {
     "enabled": true,
-    "host": "172.31.1.252",
-    "port": 1883,
     "interval_s": 5.0,
-    "retain": true
+    "report_core_temp": true,
+    "report_throttled": true,
+    "mqtt": {
+      "enabled": true,
+      "host": "172.31.1.252",
+      "port": 1883
+    }
   }
 }
