@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Self-contained INTEGRATION harness -- a superset of `compose.yml`. It keeps the
+# minimal smoke (router + talker + params + verifier) and adds the REAL
+# production `pi_runtime` daemon (`dslr`) with its hardware mocked behind the
+# existing `CaptureBackend` abstraction + a mock sysfs thermal-zone file. No
+# container here installs ROS 2 except the `verifier`.
+#
+#     router   : raw zenohd (eclipse/zenoh)             -- no ROS 2, just zenoh
+#       |
+#       |-- talker : pico-ros-py publisher (/chatter)   -- no ROS 2, just zenoh
+#       |-- params : pico-ros-py param server (/picoros)-- no ROS 2, just zenoh
+#       |-- dslr   : REAL pi_runtime daemon (mock cam)  -- no ROS 2, just zenoh
+#       |             * std_srvs/srv/SetBool capture service
+#       |             * std_msgs/msg/Float32 core-temp topic
+#       |             * sensor_msgs/msg/Image native frames
+#       |
+#     verifier : ROS 2 + rmw_zenoh, stock ros2 CLI + rclpy raw -- THE GATE
+#
+# Run:
+#   docker compose -f ci/compose.integration.yml up --build \
+#       --abort-on-container-exit --exit-code-from verifier
+#   # exit 0  == "::::: ALL INTEGRATION GATES PASSED :::::"
+name: rpi-zenoh-ros2-ci-integration
+
+services:
+  # --- raw zenoh router: the only thing on the data path; no ROS 2 ----------
+  router:
+    image: ${ZENOH_IMAGE:-eclipse/zenoh:latest}
+    command: ["-l", "tcp/0.0.0.0:7447"]
+    networks: [ros2zenoh]
+
+  # --- pico-ros-py talker daemon (no ROS 2): node heartbeat + /chatter ------
+  talker:
+    build:
+      context: ../pico-ros-py
+      dockerfile: docker/Dockerfile
+    image: pico-ros-py:ci
+    command: ["python", "scripts/run_talker.py"]
+    environment:
+      ROUTER_IP: router
+      ROUTER_PORT: "7447"
+      NODE_NAME: pico_talker
+      TOPIC: /chatter
+      RATE_HZ: "2"
+    depends_on: [router]
+    networks: [ros2zenoh]
+
+  # --- pico-ros-py parameter-server daemon (no ROS 2): node /picoros --------
+  params:
+    image: pico-ros-py:ci
+    command: ["python", "scripts/run_params_server.py"]
+    environment:
+      ROUTER_IP: router
+      ROUTER_PORT: "7447"
+      NODE_NAME: picoros
+    depends_on: [router, talker]   # reuse the image talker builds
+    networks: [ros2zenoh]
+
+  # --- REAL pi_runtime daemon (no ROS 2): mock camera + mock thermal zone ----
+  #     std_srvs/srv/SetBool capture service, std_msgs/msg/Float32 core-temp,
+  #     sensor_msgs/msg/Image frames. Build context is the REPO ROOT (..) so the
+  #     Dockerfile can COPY both pi_runtime/ and pico-ros-py/ + ci/config/.
+  dslr:
+    build:
+      context: ..
+      dockerfile: ci/dslr/Dockerfile
+    image: zenoh-dslr-pi-runtime:ci
+    # Backup for zenoh-c's SHM probe; SHM is also disabled in the client config.
+    shm_size: "512m"
+    depends_on: [router]
+    networks: [ros2zenoh]
+
+  # --- ROS 2 verifier: stock ros2 CLI + rclpy raw over rmw_zenoh; THE GATE ----
+  verifier:
+    build:
+      context: .
+      dockerfile: verifier/Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-kilted}
+    image: rpi-zenoh-ros2-verifier:ci
+    # Override the image default (/verify.sh); run the 5-gate integration script.
+    command: ["/verify_integration.sh"]
+    # Backup for zenoh-c's SHM probe; SHM is also disabled in the session config.
+    shm_size: "512m"
+    environment:
+      # example-node gates (unchanged from the minimal smoke)
+      TALKER_NODE: /pico_talker
+      PARAMS_NODE: /picoros
+      TOPIC: /chatter
+      PARAM: example.param1
+      PARAM_INIT: "10"
+      PARAM_NEW: "7"
+      PARAM_BAD: "9999"
+      # real pi_runtime daemon gates (must match ci/config/dslr-mock.json)
+      CAPTURE_SERVICE: /dslr/ci_cam/capture
+      CORE_TEMP_TOPIC: /pgwaam/ci_dslr/online/core_temp
+      IMAGE_TOPIC: /dslr/ci_cam/image_raw
+      TEMP_EXPECT: "48.3"
+    depends_on: [router, talker, params, dslr]
+    networks: [ros2zenoh]
+
+networks:
+  ros2zenoh:
+    driver: bridge

@@ -38,6 +38,8 @@ class PiDslrRuntime:
         self._exposure = (
             ExposureParameterServer(settings.exposure)
             if settings.exposure.enabled
+            else None
+        )
         self._core_temp = (
             Ros2CoreTempBroadcaster(settings.core_temp_publish)
             if settings.core_temp_publish.enabled

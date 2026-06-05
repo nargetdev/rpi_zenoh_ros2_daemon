@@ -12,10 +12,16 @@ FROM ros:${ROS_DISTRO}-ros-base
 ARG ROS_DISTRO
 
 # rmw_zenoh_cpp = the Zenoh middleware for ROS 2. ros-base already provides the
-# ros2 CLI (ros2cli / ros2topic / ros2node / ros2param).
+# ros2 CLI (ros2cli / ros2topic / ros2node / ros2param). The message packages
+# (std-msgs / std-srvs / sensor-msgs) ship with ros-base on most distros, but we
+# install them explicitly so `cdr_assert.py` (`from std_msgs.msg import ...`) and
+# the Image gate never break on a slim base image.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-rmw-zenoh-cpp \
+        ros-${ROS_DISTRO}-std-msgs \
+        ros-${ROS_DISTRO}-std-srvs \
+        ros-${ROS_DISTRO}-sensor-msgs \
     && rm -rf /var/lib/apt/lists/*
 
 ENV ROS_DISTRO=${ROS_DISTRO} \
@@ -25,7 +31,10 @@ ENV ROS_DISTRO=${ROS_DISTRO} \
 
 COPY config/zenoh-session.json5 /config/zenoh-session.json5
 COPY verifier/verify.sh /verify.sh
-RUN chmod +x /verify.sh
+# The integration superset: the 5-gate script + the byte-level CDR asserter.
+COPY verifier/verify_integration.sh /verify_integration.sh
+COPY verifier/cdr_assert.py /cdr_assert.py
+RUN chmod +x /verify.sh /verify_integration.sh
 
 # Source ROS, then run whatever command compose passes (default: the gate).
 ENTRYPOINT ["/bin/bash", "-c", "source /opt/ros/$ROS_DISTRO/setup.bash && exec \"$@\"", "--"]

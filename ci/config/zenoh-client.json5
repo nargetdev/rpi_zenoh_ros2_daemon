@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Minimal *client*-mode Zenoh config for the real pi_runtime daemon's raw
+// `zenoh.open` blob session (see runtime.py: `zenoh.Config.from_file(...)`).
+//
+// This governs ONLY the raw blob `session.put(...)` channel. The daemon's
+// native ROS 2 SDK sessions (capture service, core-temp Float32, Image) are
+// configured separately by `router_ip`/`router_port` in `dslr-mock.json`.
+//
+// Mirrors `zenoh-session.json5` (the verifier's config) and dodges the same
+// two real-world breakages:
+//   1. schema drift -- a minimal config carries no field a version-drifted
+//      zenoh-c could refuse to parse (unknown fields fail; missing ones default).
+//   2. SHM in Docker -- POSIX shared-memory probe fails in Docker's tiny
+//      /dev/shm ("OS error 12"); we talk TCP only, so disable it.
+{
+  // Connect straight to the raw `router` container; no peer/gossip scouting.
+  mode: "client",
+  connect: {
+    endpoints: ["tcp/router:7447"],
+  },
+  // Deterministic CI: discover only through the configured router.
+  scouting: {
+    multicast: { enabled: false },
+  },
+  // Disable POSIX shared-memory zero-copy (TCP-only here anyway).
+  transport: {
+    shared_memory: { enabled: false },
+  },
+}
