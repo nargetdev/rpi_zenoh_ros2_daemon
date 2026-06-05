@@ -1,37 +1,40 @@
 # SPDX-License-Identifier: Apache-2.0
-# Self-contained ROS 2 interop CI: prove that pure-zenoh pico-ros-py daemons
-# (no ROS 2 installed) are visible & controllable from the stock `ros2` CLI,
-# federating only through a raw `zenohd` router.
+# Self-contained ROS 2 interop CI: prove that the pure-zenoh daemons -- including
+# the REAL production `pi_runtime` DSLR daemon (hardware mocked) -- are visible &
+# controllable from the stock `ros2` CLI, down to the CDR wire bytes, federating
+# only through a raw `zenohd` router. No ROS 2 is installed in any daemon.
 #
-# The gate is the `verifier` container's exit code (see ci/verify.sh):
-#   GATE 1  ros2 node list   -> heartbeat / enumeration
-#   GATE 2  ros2 topic echo  -> topics
-#   GATE 3  ros2 param get|set -> parameters
+# The gate is the `verifier` container's exit code (see ci/verifier/verify_integration.sh):
+#   GATE 1  ros2 node/service/topic list  -> enumeration (examples + real daemon)
+#   GATE 2  ros2 topic echo + cdr_assert.py -> topics + BYTE-LEVEL CDR (String, Float32)
+#   GATE 3  ros2 param get|set + reject     -> parameters
+#   GATE 4  ros2 service call (SetBool)      -> real pi_runtime capture service
+#   GATE 5  ros2 topic echo (Image)          -> native sensor_msgs/msg/Image (semantic)
 name: ci
 
 on:
   push:
-    paths: ["ci/**", "pico-ros-py/**", ".github/workflows/ci.yml"]
+    paths: ["ci/**", "pico-ros-py/**", "pi_runtime/**", ".github/workflows/ci.yml"]
   pull_request:
-    paths: ["ci/**", "pico-ros-py/**", ".github/workflows/ci.yml"]
+    paths: ["ci/**", "pico-ros-py/**", "pi_runtime/**", ".github/workflows/ci.yml"]
   workflow_dispatch: {}
 
 jobs:
   ros2-interop:
-    name: ros2 CLI verifies raw-zenoh daemons
+    name: ros2 CLI + raw-CDR verifies raw-zenoh daemons (incl. real pi_runtime)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Bring up harness and gate on the ros2 verifier
+      - name: Bring up integration harness and gate on the ros2 verifier
         run: |
-          docker compose -f ci/compose.yml up --build \
+          docker compose -f ci/compose.integration.yml up --build \
             --abort-on-container-exit --exit-code-from verifier
 
       - name: Dump container logs on failure
         if: failure()
-        run: docker compose -f ci/compose.yml logs
+        run: docker compose -f ci/compose.integration.yml logs
 
       - name: Tear down
         if: always()
-        run: docker compose -f ci/compose.yml down -v
+        run: docker compose -f ci/compose.integration.yml down -v

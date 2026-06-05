@@ -1,0 +1,37 @@
+{
+  "camera_model": "CI Mock Cam",
+  "camera_id": "ci_cam",
+  "capture_service_name": "/dslr/ci_cam/capture",
+  "frame_key_prefix": "dslr/ci_cam/frames",
+  "device_id": "ci_dslr",
+  "zenoh_config_path": "zenoh-client.json5",
+  "router_ip": "router",
+  "router_port": 7447,
+  "publish_delay_ms": 0,
+  "capture_backend": { "type": "mock", "encoding": "image/png" },
+  "persistence": { "enabled": false, "directory": "./caps" },
+  "heartbeat": {
+    "enabled": true,
+    "interval_s": 2.0,
+    "thermal_zone_path": "/config/thermal_zone_temp",
+    "mqtt": { "enabled": false }
+  },
+  "pgwaam": { "enabled": false },
+  "ros2_publish": {
+    "enabled": true,
+    "topic": "/dslr/ci_cam/image_raw",
+    "encoding": "rgb8",
+    "router_ip": "router",
+    "router_port": 7447,
+    "qos_reliability": "reliable",
+    "qos_history_depth": 5
+  },
+  "core_temp_publish": {
+    "enabled": true,
+    "topic": "/pgwaam/ci_dslr/online/core_temp",
+    "interval_s": 2.0,
+    "router_ip": "router",
+    "router_port": 7447,
+    "thermal_zone_path": "/config/thermal_zone_temp"
+  }
+}

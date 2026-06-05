@@ -346,6 +346,9 @@ def _exposure_from_payload(
         router_port=int(payload.get("router_port", fallback_router_port)),
         domain_id=int(payload.get("domain_id", 0)),
         params=params,
+    )
+
+
 def _core_temp_publish_from_payload(payload: dict[str, Any], device_id: str) -> CoreTempPublishConfig:
     application = payload.get("application", "pgwaam")
     default_topic = f"/{ros2_safe_name(application)}/{ros2_safe_name(device_id)}/online/core_temp"
