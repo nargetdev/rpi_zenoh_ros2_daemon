@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# gateway_node params for the CI integration harness, bound to the mock CI camera.
+#
+# Mirrors ros2_gateway/src/zenoh_dslr_gateway/config/gateway.params.yaml but points
+# at the CI camera id/topics. Two contracts matter:
+#   * frame_key_prefix MUST equal the pi_runtime daemon's frame_key_prefix
+#     (dslr/ci_cam/frames from ci/config/dslr-mock.json) so the gateway's
+#     `{prefix}/**` subscription catches the raw frame blobs the daemon `put`s.
+#   * image_topic/compressed_topic use a distinct `gw/` segment so the republished
+#     Image never collides with the native /dslr/ci_cam/image_raw topic.
+# zenoh_config_path points at the raw-blob client config so the node's own
+# `zenoh.open()` session connects to the `router` container (TCP, SHM off).
+zenoh_dslr_gateway:
+  ros__parameters:
+    camera_id: ci_cam
+    frame_key_prefix: dslr/ci_cam/frames
+    image_topic: /dslr/ci_cam/gw/image_raw
+    compressed_topic: /dslr/ci_cam/gw/image_compressed
+    zenoh_config_path: /config/zenoh-client.json5

@@ -71,13 +71,32 @@ services:
     depends_on: [router]
     networks: [ros2zenoh]
 
+  # --- ros2_gateway relay (REAL ROS 2): colcon-built + launched gateway_node ---
+  #     Subscribes to dslr's raw Zenoh frame blobs ({frame_key_prefix}/**) over
+  #     its OWN zenoh.open() session and republishes them as native
+  #     sensor_msgs/msg/Image + CompressedImage on the `gw/` topics. Build context
+  #     is the REPO ROOT (..) so the Dockerfile can COPY ros2_gateway/ + ci/config/.
+  gateway:
+    build:
+      context: ..
+      dockerfile: ci/gateway/Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+    image: zenoh-dslr-gateway:ci
+    # The node opens TWO zenoh sessions (raw blob sub + rmw_zenoh publish); both
+    # talk TCP to `router`. Backup for zenoh-c's SHM probe (SHM is off in both
+    # configs).
+    shm_size: "512m"
+    depends_on: [router, dslr]
+    networks: [ros2zenoh]
+
   # --- ROS 2 verifier: stock ros2 CLI + rclpy raw over rmw_zenoh; THE GATE ----
   verifier:
     build:
       context: .
       dockerfile: verifier/Dockerfile
       args:
-        ROS_DISTRO: ${ROS_DISTRO:-kilted}
+        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
     image: rpi-zenoh-ros2-verifier:ci
     # Override the image default (/verify.sh); run the 5-gate integration script.
     command: ["/verify_integration.sh"]
@@ -97,7 +116,15 @@ services:
       CORE_TEMP_TOPIC: /pgwaam/ci_dslr/online/core_temp
       IMAGE_TOPIC: /dslr/ci_cam/image_raw
       TEMP_EXPECT: "48.3"
-    depends_on: [router, talker, params, dslr]
+      # native + gateway Image dims (the 640x480 rgb8 synthesized mock frame).
+      IMAGE_W: "640"
+      IMAGE_H: "480"
+      IMAGE_STEP: "1920"
+      # ros2_gateway relay gate (G6) -- must match ci/config/gateway-ci.params.yaml
+      GATEWAY_NODE: /zenoh_dslr_gateway
+      GATEWAY_IMAGE_TOPIC: /dslr/ci_cam/gw/image_raw
+      GATEWAY_COMPRESSED_TOPIC: /dslr/ci_cam/gw/image_compressed
+    depends_on: [router, talker, params, dslr, gateway]
     networks: [ros2zenoh]
 
 networks:

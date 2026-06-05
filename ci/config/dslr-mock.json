@@ -8,7 +8,13 @@
   "router_ip": "router",
   "router_port": 7447,
   "publish_delay_ms": 0,
-  "capture_backend": { "type": "mock", "encoding": "image/png" },
+  "capture_backend": {
+    "type": "mock",
+    "encoding": "image/png",
+    "mock_synthesize": true,
+    "mock_width": 640,
+    "mock_height": 480
+  },
   "persistence": { "enabled": false, "directory": "./caps" },
   "heartbeat": {
     "enabled": true,

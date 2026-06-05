@@ -50,6 +50,13 @@ class CaptureBackendConfig:
     filename_pattern: str = "{capture_id}"
     keep_on_camera: bool = False
     extra_args: list[str] | None = None
+    # Mock backend only: when True (default) the mock renders a real,
+    # date-stamped RGB frame (``mock_width`` x ``mock_height``) via Pillow so
+    # downstream width/height/encoding/step assertions are non-trivial. Set
+    # False to fall back to the legacy embedded 1x1 placeholder PNG.
+    mock_synthesize: bool = True
+    mock_width: int = 640
+    mock_height: int = 480
 
 
 @dataclass(slots=True)
