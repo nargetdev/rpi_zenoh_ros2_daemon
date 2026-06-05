@@ -40,5 +40,16 @@
     "router_port": 7447,
     "qos_reliability": "reliable",
     "qos_history_depth": 5
+  },
+  "core_temp_publish": {
+    "enabled": true,
+    "application": "pgwaam",
+    "topic": null,
+    "interval_s": 5.0,
+    "domain_id": 0,
+    "router_ip": "172.31.1.252",
+    "router_port": 7447,
+    "qos_reliability": "reliable",
+    "qos_history_depth": 5
   }
 }

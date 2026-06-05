@@ -13,6 +13,18 @@ def slugify_camera_name(value: str) -> str:
     return cleaned.strip("_") or "dslr"
 
 
+def ros2_safe_name(value: str) -> str:
+    """Sanitize a token into a ROS 2-legal topic-name segment.
+
+    A ROS 2 topic-name token may contain only ``[A-Za-z0-9_]`` -- hyphens are
+    illegal -- so a hostname like ``id2-rpi4`` must collapse to ``id2_rpi4`` for
+    the resulting topic to be visible to ``ros2 topic echo`` / rmw_zenoh. Any
+    run of non-conforming characters becomes a single ``_``.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", value.strip())
+    return cleaned.strip("_") or "device"
+
+
 def default_device_id(camera_id: str | None = None) -> str:
     """Derive a device id from the hostname, falling back to ``camera_id``.
 
@@ -112,6 +124,35 @@ class Ros2PublishConfig:
 
 
 @dataclass(slots=True)
+class CoreTempPublishConfig:
+    """Native ROS 2 ``std_msgs/msg/Float32`` core-temperature publication over rmw_zenoh.
+
+    When ``enabled``, the SoC core temperature (degrees Celsius) is published
+    periodically as a CDR-encoded ``std_msgs/msg/Float32`` via
+    ``zenoh_ros2_sdk.ROS2Publisher``, so ``ros2 topic echo`` / foxglove / any ROS 2
+    node sees a real ``Float32`` topic one hop off the shared router -- distinct
+    from the JSON ``core_temp_c`` field already embedded in the heartbeat blob.
+
+    The default topic mirrors the pgwaam online-channel convention,
+    ``/{application}/{hostname}/online/core_temp``, with every segment sanitized
+    to a ROS 2-legal name (e.g. ``id2-rpi4`` -> ``id2_rpi4``).
+
+    SHARED CONTRACT: this block must match the ansible side EXACTLY.
+    """
+
+    enabled: bool = False
+    application: str = "pgwaam"
+    topic: str | None = None
+    interval_s: float = 5.0
+    domain_id: int = 0
+    router_ip: str = "172.31.1.252"
+    router_port: int = 7447
+    qos_reliability: str = "reliable"
+    qos_history_depth: int = 5
+    thermal_zone_path: str = "/sys/class/thermal/thermal_zone0/temp"
+
+
+@dataclass(slots=True)
 class HeartbeatConfig:
     enabled: bool = True
     interval_s: float = 5.0
@@ -167,6 +208,7 @@ class PiRuntimeSettings:
     pgwaam: PgwaamOnlineConfig = field(default_factory=PgwaamOnlineConfig)
     ros2_publish: Ros2PublishConfig = field(default_factory=Ros2PublishConfig)
     exposure: ExposureParamsConfig = field(default_factory=ExposureParamsConfig)
+    core_temp_publish: CoreTempPublishConfig = field(default_factory=CoreTempPublishConfig)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "PiRuntimeSettings":
@@ -205,6 +247,7 @@ class PiRuntimeSettings:
             ros2_publish.router_ip,
             ros2_publish.router_port,
         )
+        core_temp_publish = _core_temp_publish_from_payload(payload.get("core_temp_publish", {}), device_id)
 
         return cls(
             camera_id=camera_id,
@@ -222,6 +265,7 @@ class PiRuntimeSettings:
             pgwaam=pgwaam,
             ros2_publish=ros2_publish,
             exposure=exposure,
+            core_temp_publish=core_temp_publish,
         )
 
 
@@ -302,6 +346,20 @@ def _exposure_from_payload(
         router_port=int(payload.get("router_port", fallback_router_port)),
         domain_id=int(payload.get("domain_id", 0)),
         params=params,
+def _core_temp_publish_from_payload(payload: dict[str, Any], device_id: str) -> CoreTempPublishConfig:
+    application = payload.get("application", "pgwaam")
+    default_topic = f"/{ros2_safe_name(application)}/{ros2_safe_name(device_id)}/online/core_temp"
+    return CoreTempPublishConfig(
+        enabled=bool(payload.get("enabled", False)),
+        application=application,
+        topic=payload.get("topic") or default_topic,
+        interval_s=float(payload.get("interval_s", 5.0)),
+        domain_id=int(payload.get("domain_id", 0)),
+        router_ip=payload.get("router_ip", "172.31.1.252"),
+        router_port=int(payload.get("router_port", 7447)),
+        qos_reliability=payload.get("qos_reliability", "reliable"),
+        qos_history_depth=int(payload.get("qos_history_depth", 5)),
+        thermal_zone_path=payload.get("thermal_zone_path", "/sys/class/thermal/thermal_zone0/temp"),
     )
 
 
