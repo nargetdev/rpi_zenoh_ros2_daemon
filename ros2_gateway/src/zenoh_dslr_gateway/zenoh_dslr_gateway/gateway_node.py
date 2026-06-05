@@ -1,3 +1,15 @@
+"""DEPRECATED for images.
+
+This relay node subscribes to plain Zenoh frame blobs and republishes them as ROS
+image topics. Its image republication is **superseded** by the native one-hop path:
+``pi_runtime`` now publishes captured frames directly as native
+``sensor_msgs/msg/Image`` via ``zenoh_ros2_sdk.ROS2Publisher`` onto the shared
+rmw_zenoh router, where ``foxglove_bridge`` / any ROS 2 node displays them with no
+relay in between (confirmed live on ``soma:8765``). Enable it via the
+``ros2_publish`` block in the Pi config. This node is retained only as reference;
+do not deploy it for image republication.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

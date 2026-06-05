@@ -1,15 +1,18 @@
 # Zenoh DSLR Capture Bridge
 
-This repository targets an `rmw_zenoh` deployment with two code paths:
+This repository targets an `rmw_zenoh` deployment. The Pi runtime publishes
+captured frames **directly** as native `sensor_msgs/msg/Image`, so there is no
+mothership relay in the image path:
 
-- `pi_runtime/`: runs on a Raspberry Pi without ROS 2 installed, exposes a ROS 2 capture service through `zenoh_ros2_sdk`, and publishes the captured image bytes as a plain Zenoh blob
-- `ros2_gateway/`: runs on the mothership, calls the remote ROS 2 service, subscribes to the plain Zenoh frame blobs, and republishes ROS image topics for Foxglove
+- `pi_runtime/`: runs on a Raspberry Pi without ROS 2 installed, exposes a ROS 2 capture service through `zenoh_ros2_sdk`, and (when `ros2_publish` is enabled) publishes each captured frame as a native CDR-encoded `sensor_msgs/msg/Image` straight onto the shared rmw_zenoh router. It still also publishes the raw image bytes as a plain Zenoh blob for archival/other consumers.
+- `ros2_gateway/`: **DEPRECATED for images** — the previous mothership relay that decoded Zenoh blobs into ROS image topics. The native one-hop path above replaces it. Retained only as reference and for the capture-service client harness.
 
-This keeps your original split:
+Key properties:
 
 - service call and acknowledgment travel as ROS 2 over Zenoh
-- binary image transfer travels separately as raw Zenoh data
-- Foxglove consumes standard ROS 2 image topics on the mothership
+- the image itself travels as a native `sensor_msgs/msg/Image` over the same router — one hop, no gateway
+- Foxglove / any ROS 2 node consumes the standard `sensor_msgs/msg/Image` topic directly (confirmed live on `soma:8765`, `ws://172.31.1.252:8765`)
+- the native publisher is failure-tolerant: a dead router never breaks capture, and the path is opt-in (`ros2_publish.enabled = false` by default)
 
 ## Layout
 
@@ -20,13 +23,45 @@ This keeps your original split:
 
 ## Data Flow
 
-1. A mothership ROS 2 client calls a camera-specific service such as `/dslr/Canon_EOS_6D/capture`.
+One-hop native path (no gateway in the image path):
+
+```
+   Raspberry Pi                         soma (rmw_zenoh router host)
+ ┌──────────────────┐                 ┌────────────────────────────────┐
+ │ pi_runtime       │  native         │  rmw_zenoh router (7447)        │
+ │  capture(JPEG)   │  sensor_msgs/   │        │                       │
+ │  -> downsample   │  msg/Image      │        ▼                       │
+ │  -> ROS2Publisher├────────────────►│  foxglove_bridge (8765) ─► Foxglove
+ │                  │   (CDR/Zenoh)   │  or any rmw_zenoh ROS 2 node    │
+ └──────────────────┘                 └────────────────────────────────┘
+```
+
+1. A ROS 2 client calls a camera-specific service such as `/dslr/Canon_EOS_6D/capture`.
 2. The Pi serves that service using `zenoh_ros2_sdk` and `std_srvs/srv/SetBool`.
-3. The Pi captures a frame and publishes compressed image bytes on a camera-specific Zenoh key such as `dslr/Canon_EOS_6D/frames/<capture_id>`.
+3. The Pi captures a frame, then (when `ros2_publish.enabled`) PIL-decodes it to RGB, downsamples to fit `max_width`/`max_height`, and publishes a native `sensor_msgs/msg/Image` (`rgb8`) on the configured topic (default `/dslr/<camera_id>/image_raw`) via `zenoh_ros2_sdk.ROS2Publisher`, straight onto the shared rmw_zenoh router. It also still `put`s the raw image bytes on `dslr/<camera_id>/frames/<capture_id>` for archival/other consumers.
 4. The SetBool response returns a JSON message with `capture_id`, `image_key`, encoding, and dimensions.
-5. The mothership relay subscribes to the camera-specific frame prefix and republishes:
-   - `/dslr/Canon_EOS_6D/image_raw` as `sensor_msgs/msg/Image`
-   - `/dslr/Canon_EOS_6D/image_compressed` as `sensor_msgs/msg/CompressedImage`
+5. `foxglove_bridge` (or any `rmw_zenoh` ROS 2 node) on `soma` subscribes to that `sensor_msgs/msg/Image` topic and displays it directly — no relay, one hop. Confirmed live in Foxglove (`ws://172.31.1.252:8765`).
+
+### `ros2_publish` config (shared contract)
+
+The Pi config opt-in block (must match the ansible side exactly):
+
+```json
+"ros2_publish": {
+  "enabled": false,
+  "topic": null,
+  "encoding": "rgb8",
+  "max_width": 640,
+  "max_height": 480,
+  "domain_id": 0,
+  "router_ip": "172.31.1.252",
+  "router_port": 7447,
+  "qos_reliability": "reliable",
+  "qos_history_depth": 5
+}
+```
+
+`topic` defaults to `/dslr/<camera_id>/image_raw`. A `0` for `max_width`/`max_height` disables that downsample axis.
 
 ## Why `std_srvs/SetBool`
 
