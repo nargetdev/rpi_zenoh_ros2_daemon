@@ -12,6 +12,7 @@ from zenoh_ros2_sdk import ROS2ServiceServer
 from .capture_backends import build_backend
 from .heartbeat import HeartbeatBroadcaster, PgwaamOnlineBroadcaster
 from .models import PiRuntimeSettings
+from .ros2_core_temp_publisher import Ros2CoreTempBroadcaster
 from .ros2_image_publisher import Ros2ImagePublisher
 
 
@@ -31,6 +32,11 @@ class PiDslrRuntime:
         self._ros2_image_publisher = (
             Ros2ImagePublisher(settings.ros2_publish, frame_id=settings.camera_id)
             if settings.ros2_publish.enabled
+            else None
+        )
+        self._core_temp = (
+            Ros2CoreTempBroadcaster(settings.core_temp_publish)
+            if settings.core_temp_publish.enabled
             else None
         )
 
@@ -61,10 +67,14 @@ class PiDslrRuntime:
             heartbeat.start()
             pgwaam = PgwaamOnlineBroadcaster(self._settings)
             pgwaam.start()
+            if self._core_temp is not None:
+                self._core_temp.start()
             try:
                 while not self._stop_event.is_set():
                     time.sleep(0.25)
             finally:
+                if self._core_temp is not None:
+                    self._core_temp.stop()
                 pgwaam.stop()
                 heartbeat.stop()
                 if self._ros2_image_publisher is not None:
