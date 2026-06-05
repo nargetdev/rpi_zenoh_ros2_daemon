@@ -1,21 +1,19 @@
 {
-  "camera_model": "Canon EOS 6D",
-  "camera_id": "Canon_EOS_6D",
-  "capture_service_name": "/dslr/Canon_EOS_6D/capture",
-  "frame_key_prefix": "dslr/Canon_EOS_6D/frames",
+  "camera_model": "id1-cm5 node",
+  "camera_id": "node_id1_cm5",
+  "capture_service_name": "/dslr/node_id1_cm5/capture",
+  "frame_key_prefix": "dslr/node_id1_cm5/frames",
   "zenoh_config_path": "../../deploy/pi/zenoh-client.json5",
   "router_ip": "172.31.1.252",
   "router_port": 7447,
   "capture_backend": {
-    "type": "gphoto2",
-    "encoding": "image/jpeg",
-    "port": "usb:001,004",
-    "filename_pattern": "{camera_id}_{capture_id}"
+    "type": "mock",
+    "encoding": "image/png"
   },
   "persistence": {
-    "enabled": true,
-    "directory": "./captures/Canon_EOS_6D",
-    "max_bytes": 754974720
+    "enabled": false,
+    "directory": "./captures/node_id1_cm5",
+    "max_bytes": 104857600
   },
   "publish_delay_ms": 0,
   "heartbeat": {

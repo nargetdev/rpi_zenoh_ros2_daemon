@@ -17,5 +17,16 @@
     "directory": "./captures/Canon_EOS_M50",
     "max_bytes": 754974720
   },
-  "publish_delay_ms": 0
+  "publish_delay_ms": 0,
+  "heartbeat": {
+    "enabled": true,
+    "interval_s": 5.0,
+    "report_core_temp": true,
+    "report_throttled": true,
+    "mqtt": {
+      "enabled": true,
+      "host": "172.31.1.252",
+      "port": 1883
+    }
+  }
 }

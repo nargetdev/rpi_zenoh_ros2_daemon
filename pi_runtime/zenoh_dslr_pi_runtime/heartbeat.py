@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import subprocess
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .models import PiRuntimeSettings
@@ -16,6 +18,42 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 LOGGER = logging.getLogger("zenoh_dslr_pi_runtime.heartbeat")
 
 
+def read_core_temp_c(path: str = "/sys/class/thermal/thermal_zone0/temp") -> float | None:
+    """Read the SoC core temperature in Celsius from sysfs.
+
+    Returns ``None`` when the thermal zone is unreadable (e.g. non-Pi host or
+    missing sysfs entry) so a temperature probe never breaks the heartbeat.
+    """
+    try:
+        raw = Path(path).read_text().strip()
+        return round(int(raw) / 1000.0, 1)
+    except Exception:  # pragma: no cover - hardware/filesystem dependent
+        return None
+
+
+def read_throttled() -> str | None:
+    """Return the Raspberry Pi throttling/undervoltage bitmask via ``vcgencmd``.
+
+    The value is the raw ``0x...`` word from ``vcgencmd get_throttled``; a
+    non-zero value indicates current or past undervoltage/thermal throttling.
+    Returns ``None`` when ``vcgencmd`` is unavailable.
+    """
+    try:
+        out = subprocess.run(
+            ["vcgencmd", "get_throttled"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+    except Exception:  # pragma: no cover - depends on vcgencmd availability
+        return None
+    if out.returncode != 0:
+        return None
+    # Output looks like "throttled=0x0"
+    _, _, value = out.stdout.strip().partition("=")
+    return value or None
+
+
 def build_heartbeat_payload(
     settings: PiRuntimeSettings,
     seq: int,
@@ -23,6 +61,8 @@ def build_heartbeat_payload(
     *,
     now: float | None = None,
     hostname: str | None = None,
+    core_temp_c: float | None = None,
+    throttled: str | None = None,
 ) -> dict[str, Any]:
     """Build a single heartbeat message describing this DSLR runtime instance."""
     return {
@@ -36,6 +76,8 @@ def build_heartbeat_payload(
         "capture_count": capture_count,
         "ts": now if now is not None else time.time(),
         "interval_s": settings.heartbeat.interval_s,
+        "core_temp_c": core_temp_c,
+        "throttled": throttled,
     }
 
 
@@ -143,7 +185,15 @@ class HeartbeatBroadcaster:
         cfg = self._settings.heartbeat
         seq = 0
         while not self._stop_event.is_set():
-            payload = build_heartbeat_payload(self._settings, seq, self._capture_count())
+            core_temp_c = read_core_temp_c(cfg.thermal_zone_path) if cfg.report_core_temp else None
+            throttled = read_throttled() if cfg.report_throttled else None
+            payload = build_heartbeat_payload(
+                self._settings,
+                seq,
+                self._capture_count(),
+                core_temp_c=core_temp_c,
+                throttled=throttled,
+            )
             encoded = json.dumps(payload)
             try:
                 self._session.put(cfg.zenoh_key, encoded)

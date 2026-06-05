@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Live integration test against an EXTERNAL Zenoh router (default
+# 172.31.1.102:7447). Unlike ci/compose.yml and docker/compose.test.yml, this
+# harness spins up NO router of its own -- both containers federate through the
+# real, already-running router on the LAN.
+#
+#   (1) node-under-test : pico-ros-py publisher  -- NO ROS 2, just zenoh
+#                         publishes std_msgs/msg/Int64 = time.time_ns() on
+#                         /node_under_test/node_under_test/epoch_ns
+#   (2) validator       : ROS 2 (kilted) + rmw_zenoh, stock `ros2` CLI -- the gate
+#                         ros2 topic echo node_under_test/node_under_test/epoch_ns
+#
+# Run:
+#   docker compose -f live/docker-compose.yml up --build \
+#       --abort-on-container-exit --exit-code-from validator
+#   # exit 0 == "::::: ALL VALIDATE GATES PASSED :::::"
+#
+# Point at a different router:  ROUTER_IP=1.2.3.4 docker compose -f live/... up ...
+name: pico-ros-py-live
+
+services:
+  # --- (2) node under test: pico-ros-py epoch_ns publisher (no ROS 2) --------
+  node-under-test:
+    build:
+      context: ../pico-ros-py
+      dockerfile: docker/Dockerfile
+    image: pico-ros-py:live
+    command: ["python", "scripts/run_epoch_pub.py"]
+    environment:
+      ROUTER_IP: ${ROUTER_IP:-172.31.1.102}
+      ROUTER_PORT: ${ROUTER_PORT:-7447}
+      NODE_NAME: node_under_test
+      NAMESPACE: /node_under_test
+      TOPIC: /node_under_test/node_under_test/epoch_ns
+      MSG_TYPE: std_msgs/msg/Int64
+      RATE_HZ: "5"
+    # Reach the external router on the LAN, not a compose-internal service.
+    network_mode: host
+
+  # --- (1) validator: stock ros2 CLI over rmw_zenoh; gates the run ----------
+  validator:
+    build:
+      context: .
+      dockerfile: validator/Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-kilted}
+    image: pico-ros-py-validator:live
+    # Backup for zenoh-c's SHM probe; SHM is also disabled in the session config.
+    shm_size: "512m"
+    environment:
+      ROUTER_IP: ${ROUTER_IP:-172.31.1.102}
+      ROUTER_PORT: ${ROUTER_PORT:-7447}
+      NODE: /node_under_test/node_under_test
+      TOPIC: /node_under_test/node_under_test/epoch_ns
+      MSG_TYPE: std_msgs/msg/Int64
+    depends_on: [node-under-test]
+    network_mode: host

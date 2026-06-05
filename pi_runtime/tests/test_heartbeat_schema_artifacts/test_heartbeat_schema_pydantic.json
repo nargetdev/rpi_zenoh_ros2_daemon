@@ -15,10 +15,10 @@
     },
     "persistence": {
       "enabled": true,
-      "directory": "/home/soma/GROK_WS/PhotogrammetryWAAM-Blender-UX/ros2_ws/edge/raspberry-dslr-service-zenoh/pi_runtime/config/captures/Canon_EOS_6D",
+      "directory": "/home/soma/pgwaam.subrepos/rpi_zenoh_ros2_daemon/pi_runtime/config/captures/Canon_EOS_6D",
       "max_bytes": 754974720
     },
-    "zenoh_config_path": "/home/soma/GROK_WS/PhotogrammetryWAAM-Blender-UX/ros2_ws/edge/raspberry-dslr-service-zenoh/deploy/pi/zenoh-client.json5",
+    "zenoh_config_path": "/home/soma/pgwaam.subrepos/rpi_zenoh_ros2_daemon/deploy/pi/zenoh-client.json5",
     "router_ip": "172.31.1.252",
     "router_port": 7447,
     "publish_delay_ms": 0,
@@ -27,6 +27,9 @@
       "interval_s": 5.0,
       "zenoh_key": "dslr/Canon_EOS_6D/heartbeat",
       "liveliness_key": "dslr/Canon_EOS_6D/alive",
+      "report_core_temp": true,
+      "report_throttled": true,
+      "thermal_zone_path": "/sys/class/thermal/thermal_zone0/temp",
       "mqtt": {
         "enabled": true,
         "host": "172.31.1.252",
@@ -50,6 +53,8 @@
     "seq": 3,
     "capture_count": 7,
     "ts": 1700000000.0,
-    "interval_s": 5.0
+    "interval_s": 5.0,
+    "core_temp_c": 48.3,
+    "throttled": "0x0"
   }
 }

@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Minimal rmw_zenoh *session* config for the validator container, rendered at
+// container start from ROUTER_IP/ROUTER_PORT (see validator/echo.sh).
+//
+// Why a hand-written config instead of rmw_zenoh's shipped default:
+//   1. We point the session straight at the EXTERNAL live `zenohd` router
+//      (${ROUTER_IP}:${ROUTER_PORT}) instead of relying on multicast/gossip.
+//   2. The shipped DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5 carries a
+//      `shared_memory.transport_optimization` field that some bundled zenoh-c
+//      builds refuse to parse (version drift). A minimal config sidesteps it --
+//      unknown fields are the problem, never missing ones (they just default).
+{
+  // Connect straight to the live router; no DDS, no local rmw_zenohd.
+  mode: "client",
+  connect: {
+    endpoints: ["tcp/${ROUTER_IP}:${ROUTER_PORT}"],
+  },
+  // Discover peers only through the configured router (deterministic).
+  scouting: {
+    multicast: { enabled: false },
+  },
+  // Disable POSIX shared-memory zero-copy: it only helps same-host transport,
+  // and zenoh-c fails to allocate an SHM segment in Docker's small /dev/shm
+  // ("Unable to create POSIX shm segment: OS error 12"). We talk TCP only.
+  transport: {
+    shared_memory: { enabled: false },
+  },
+}

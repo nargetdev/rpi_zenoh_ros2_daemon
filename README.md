@@ -15,8 +15,22 @@ This keeps your original split:
 
 - `pi_runtime/`: transfer to the Raspberry Pi
 - `ros2_gateway/`: transfer to the ROS 2 mothership
+- `pico-ros-py/`: Python re-imagining of Pico-ROS (Node/pub/sub/services/params) on `zenoh_ros2_sdk` — first-class ROS 2 graph participation with no ROS 2 install
+- `ci/`: **self-contained Docker CI/CD** that proves the no-ROS-2 daemons show up in `ros2 node list`, `ros2 topic echo`, and `ros2 param get/set` — federating only through a raw `zenohd`. See [`ci/README.md`](ci/README.md).
 - `deploy/`: example Zenoh and `rmw_zenoh` configuration
 - `docs/`: architecture notes and earlier bridge tradeoffs
+
+## Validate the raw-Zenoh ↔ ROS 2 interop (one command)
+
+```bash
+docker compose -f ci/compose.yml up --build \
+    --abort-on-container-exit --exit-code-from verifier
+# exit 0 == "::::: ALL VERIFY GATES PASSED :::::"
+```
+
+Brings up a raw `zenohd` router, two pure-Zenoh `pico-ros-py` daemons (a talker
+node and a parameter-server node, **no ROS 2 installed**), and one ROS 2 +
+`rmw_zenoh` verifier that gates the run with the stock `ros2` CLI.
 
 ## Data Flow
 

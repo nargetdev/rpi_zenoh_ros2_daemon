@@ -15,6 +15,7 @@ from pico_ros_py.picoserdes import get_message_class, get_session  # noqa: E402
 
 MESSAGES = [
     "std_msgs/msg/String",
+    "std_msgs/msg/Int64",
     "builtin_interfaces/msg/Time",
     "rcl_interfaces/msg/ParameterValue",
     "rcl_interfaces/msg/Parameter",

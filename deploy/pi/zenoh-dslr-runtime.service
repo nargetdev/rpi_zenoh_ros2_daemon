@@ -1,0 +1,19 @@
+[Unit]
+# Installed by deploy/pi/deploy.sh. Placeholders __RUN_USER__ and __INSTALL_DIR__
+# are substituted per host at deploy time.
+Description=Zenoh DSLR Pi runtime (capture service + heartbeat/core-temp reporting)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+WorkingDirectory=__INSTALL_DIR__/pi_runtime
+EnvironmentFile=/etc/default/zenoh-dslr-runtime
+ExecStart=__INSTALL_DIR__/venv/bin/python -m zenoh_dslr_pi_runtime.cli --config ${RUNTIME_CONFIG}
+Restart=always
+RestartSec=5
+# Thermal zone (/sys/class/thermal) and vcgencmd are read read-only; no extra caps needed.
+
+[Install]
+WantedBy=multi-user.target
