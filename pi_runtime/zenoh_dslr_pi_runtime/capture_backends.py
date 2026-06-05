@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import base64
+from datetime import datetime
 import io
 from pathlib import Path
 import subprocess
@@ -9,7 +10,7 @@ import tempfile
 import time
 import uuid
 
-from PIL import Image as PilImage
+from PIL import Image as PilImage, ImageDraw, ImageFont
 
 from .models import CaptureBackendConfig, CaptureResult, PiRuntimeSettings
 from .persistence import PersistenceBuffer
@@ -18,6 +19,37 @@ from .persistence import PersistenceBuffer
 MOCK_IMAGE_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+y3ioAAAAASUVORK5CYII="
 )
+
+
+def _synthesize_dated_png(width: int, height: int, date_str: str) -> bytes:
+    """Render a deterministic, date-stamped RGB test frame as PNG bytes.
+
+    Unlike the embedded 1x1 ``MOCK_IMAGE_BYTES`` placeholder, this produces a
+    real ``width`` x ``height`` image with non-trivial dimensions so downstream
+    width/height/encoding/step assertions (native + gateway Image CDR) are
+    meaningful. The date string is drawn onto the frame with Pillow's built-in
+    bitmap font (no font-file dependency) and reference colored bars are added so
+    the frame is visually distinguishable.
+    """
+    image = PilImage.new("RGB", (width, height), (32, 32, 40))
+    draw = ImageDraw.Draw(image)
+
+    # Reference colored bars across the top so the frame is obviously non-blank.
+    bar_colors = [(220, 60, 60), (60, 200, 90), (70, 120, 230), (230, 200, 60)]
+    bar_height = max(1, height // 8)
+    bar_width = max(1, width // len(bar_colors))
+    for index, color in enumerate(bar_colors):
+        x0 = index * bar_width
+        x1 = width if index == len(bar_colors) - 1 else x0 + bar_width
+        draw.rectangle([x0, 0, x1, bar_height], fill=color)
+
+    font = ImageFont.load_default()
+    draw.text((8, bar_height + 8), f"CI MOCK {date_str}", fill=(255, 255, 255), font=font)
+    draw.text((8, bar_height + 24), f"{width}x{height} rgb8", fill=(200, 200, 200), font=font)
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class CaptureBackend(ABC):
@@ -104,14 +136,24 @@ class MockCaptureBackend(CaptureBackend):
 
     def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         capture_id = uuid.uuid4().hex
-        width, height = self._read_dimensions(MOCK_IMAGE_BYTES)
-        return self._finalize_capture(
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        if self._config.mock_synthesize:
+            payload = _synthesize_dated_png(
+                self._config.mock_width, self._config.mock_height, date_str
+            )
+        else:
+            payload = MOCK_IMAGE_BYTES
+        width, height = self._read_dimensions(payload)
+        frame = self._finalize_capture(
             capture_id=capture_id,
-            payload=MOCK_IMAGE_BYTES,
+            payload=payload,
             encoding=self._config.encoding,
             width=width,
             height=height,
         )
+        if self._config.mock_synthesize:
+            frame.metadata["synthesized_date"] = date_str
+        return frame
 
 
 class CommandCaptureBackend(CaptureBackend):

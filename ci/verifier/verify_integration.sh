@@ -12,8 +12,13 @@
 #   2 topics + CDR : `ros2 topic echo /chatter` + `cdr_assert.py` (byte-level
 #                    CDR header / endianness / field bytes for String + Float32)
 #   3 parameters   : `ros2 param list/get/set` + out-of-range reject on /picoros
-#   4 service      : `ros2 service call` on the REAL std_srvs/srv/SetBool capture
-#   5 image topic  : native sensor_msgs/msg/Image arrives (semantic; capture-fed)
+#   4 service      : `ros2 service call` on the REAL std_srvs/srv/SetBool capture,
+#                    asserting success=True AND the JSON metadata keys it returns
+#   5 image (CDR)  : native sensor_msgs/msg/Image byte-level CDR via cdr_assert.py
+#                    (width 640 / height 480 / encoding rgb8 / step 1920)
+#   6 gateway      : the ros2_gateway relay node -- param get/set round-trip on its
+#                    four declared params + its REPUBLISHED Image topic echo
+#                    (sensor_msgs/msg/Image, 640/480/rgb8/1920)
 #
 # Exit 0 == all gates pass. Any failure exits non-zero and aborts the harness.
 set -uo pipefail
@@ -32,6 +37,16 @@ CAPTURE_SERVICE="${CAPTURE_SERVICE:-/dslr/ci_cam/capture}"
 CORE_TEMP_TOPIC="${CORE_TEMP_TOPIC:-/pgwaam/ci_dslr/online/core_temp}"
 IMAGE_TOPIC="${IMAGE_TOPIC:-/dslr/ci_cam/image_raw}"
 STRICT_IMAGE="${STRICT_IMAGE:-1}"
+
+# Expected native + gateway Image dims (the 640x480 rgb8 synthesized mock frame).
+IMAGE_W="${IMAGE_W:-640}"
+IMAGE_H="${IMAGE_H:-480}"
+IMAGE_STEP="${IMAGE_STEP:-1920}"
+
+# -- ros2_gateway relay knobs (Gate 6) ---------------------------------------
+GATEWAY_NODE="${GATEWAY_NODE:-/zenoh_dslr_gateway}"
+GATEWAY_IMAGE_TOPIC="${GATEWAY_IMAGE_TOPIC:-/dslr/ci_cam/gw/image_raw}"
+GATEWAY_COMPRESSED_TOPIC="${GATEWAY_COMPRESSED_TOPIC:-/dslr/ci_cam/gw/image_compressed}"
 
 DISCOVERY_TRIES="${DISCOVERY_TRIES:-40}"   # ~40 * 2s = up to 80s for discovery
 
@@ -137,41 +152,107 @@ done
 log "ros2 service call $CAPTURE_SERVICE std_srvs/srv/SetBool {data: true} ->"
 echo "$svc_out" | sed 's/^/    /'
 grep -q "success=True" <<<"$svc_out" || fail "capture service did not return success=True: $svc_out"
-log "GATE 4 ok: REAL pi_runtime SetBool capture service returned success"
+# The response `message` field is JSON metadata; assert the documented keys are
+# present (camera_id + request_id), proving the real capture-accept payload.
+grep -q "camera_id" <<<"$svc_out"  || fail "SetBool response message missing 'camera_id' key: $svc_out"
+grep -q "request_id" <<<"$svc_out" || fail "SetBool response message missing 'request_id' key: $svc_out"
+log "GATE 4 ok: REAL pi_runtime SetBool capture service returned success + JSON keys (camera_id, request_id)"
+
+# A background capture loop: the native + gateway Images are one-shot VOLATILE
+# per capture, so a fresh frame must land WHILE the raw subscriber/echo is alive.
+# Drive repeated captures (~every 2s) for the duration of the Image gates.
+start_capture_loop() {
+  ( for _ in $(seq 1 90); do
+      timeout 12 ros2 service call "$CAPTURE_SERVICE" std_srvs/srv/SetBool "{data: true}" >/dev/null 2>&1
+      sleep 2
+    done ) &
+  echo $!
+}
 
 # ---------------------------------------------------------------------------
-# 5) NATIVE IMAGE TOPIC (semantic) -- the capture above publishes a native
-#    sensor_msgs/msg/Image; assert it arrives with encoding rgb8. Large/variable
-#    payload, so validated semantically (type + arrival + encoding), not byte-wise.
-#
-#    The Image is published ONE-SHOT per capture with VOLATILE durability, so a
-#    late-joining subscriber gets nothing -- `ros2 topic echo` MUST already be
-#    subscribed when a frame is published. We therefore drive captures from a
-#    BACKGROUND loop (every ~2s) so a fresh frame reliably lands inside the echo
-#    subscription window, rather than firing the capture only after echo gives up.
+# 5) NATIVE IMAGE TOPIC (byte-level CDR) -- the capture above publishes a native
+#    sensor_msgs/msg/Image produced by zenoh_ros2_sdk. Assert the EXACT CDR wire
+#    bytes via rclpy raw=True (cdr_assert.py --image): width 640 / height 480 /
+#    encoding rgb8 / step 1920 / data == step*height. This proves a real
+#    rclpy/rmw_zenoh_cpp client decodes precisely what the SDK serialized -- far
+#    stronger than the previous `grep encoding: rgb8` semantic check.
 # ---------------------------------------------------------------------------
-( for _ in $(seq 1 40); do
-    timeout 12 ros2 service call "$CAPTURE_SERVICE" std_srvs/srv/SetBool "{data: true}" >/dev/null 2>&1
-    sleep 2
-  done ) &
-cap_pid=$!
-img=""
-for i in $(seq 1 15); do
-  img="$(timeout 12 ros2 topic echo --once --no-arr "$IMAGE_TOPIC" sensor_msgs/msg/Image 2>/dev/null)"
-  grep -q "encoding: rgb8" <<<"$img" && break
+cap_pid="$(start_capture_loop)"
+log "asserting native Image byte-level CDR on $IMAGE_TOPIC (cdr_assert.py --image) ..."
+if IMAGE_TOPIC="$IMAGE_TOPIC" IMAGE_W="$IMAGE_W" IMAGE_H="$IMAGE_H" IMAGE_STEP="$IMAGE_STEP" \
+     python3 /cdr_assert.py --image; then
+  kill "$cap_pid" 2>/dev/null; wait "$cap_pid" 2>/dev/null
+  log "GATE 5 ok: native sensor_msgs/msg/Image byte-level CDR (${IMAGE_W}x${IMAGE_H} rgb8 step ${IMAGE_STEP})"
+else
+  rc=$?
+  kill "$cap_pid" 2>/dev/null; wait "$cap_pid" 2>/dev/null
+  if [ "$STRICT_IMAGE" = "1" ]; then
+    fail "native Image byte-level CDR assertion failed on $IMAGE_TOPIC (see [cdr] lines)"
+  else
+    log "GATE 5 advisory (STRICT_IMAGE=0): native Image CDR assert rc=$rc; continuing"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 6) ROS2_GATEWAY RELAY -- the colcon-built gateway_node subscribes to dslr's raw
+#    Zenoh frame blobs and republishes native sensor_msgs/msg/Image +
+#    CompressedImage on the `gw/` topics. Verify (a) the node appears in the graph,
+#    (b) each of its FOUR declared params round-trips via `ros2 param get/set`, and
+#    (c) its republished Image topic echoes a 640x480 rgb8 frame (step 1920).
+#
+#    NOTE: the gateway re-reads camera_id/frame_key_prefix only at construction, so
+#    a `set` updates the param STORE (what we assert) without re-wiring the live
+#    subscription -- we assert the param round-trip, not a behavior change.
+# ---------------------------------------------------------------------------
+gw_nodes=""
+for i in $(seq 1 "$DISCOVERY_TRIES"); do
+  gw_nodes="$(ros2 node list 2>/dev/null)"
+  grep -qx "$GATEWAY_NODE" <<<"$gw_nodes" && break
+  sleep 2
+done
+grep -qx "$GATEWAY_NODE" <<<"$gw_nodes" || fail "gateway node $GATEWAY_NODE not in 'ros2 node list' (relay down?)"
+log "gateway node $GATEWAY_NODE present in graph"
+
+# Param round-trip on each of the four declared string params. New values are
+# benign relabelings; we assert get-after-set reflects the change.
+gw_param_roundtrip() {
+  local name="$1" newval="$2"
+  local before after set_out
+  before="$(timeout 12 ros2 param get "$GATEWAY_NODE" "$name" 2>/dev/null)"
+  log "ros2 param get $GATEWAY_NODE $name -> $before"
+  grep -q "not set\|does not exist" <<<"$before" && fail "gateway param $name not declared: $before"
+  set_out="$(timeout 12 ros2 param set "$GATEWAY_NODE" "$name" "$newval" 2>&1)"
+  log "ros2 param set $GATEWAY_NODE $name $newval -> $set_out"
+  grep -qi "successful" <<<"$set_out" || fail "gateway set $name=$newval not successful: $set_out"
+  after="$(timeout 12 ros2 param get "$GATEWAY_NODE" "$name" 2>/dev/null)"
+  log "ros2 param get (after set) $name -> $after"
+  grep -q "$newval" <<<"$after" || fail "gateway param $name after set expected $newval, got: $after"
+}
+
+gw_param_roundtrip camera_id ci_cam_relabel
+gw_param_roundtrip frame_key_prefix dslr/ci_cam/frames_relabel
+gw_param_roundtrip image_topic /dslr/ci_cam/gw/image_raw_relabel
+gw_param_roundtrip compressed_topic /dslr/ci_cam/gw/image_compressed_relabel
+log "gateway param get/set round-trip ok on all four declared params"
+
+# Republished Image topic echo: drive captures so a fresh blob is relayed while
+# we echo the gateway's republished topic.
+cap_pid="$(start_capture_loop)"
+gw_img=""
+for i in $(seq 1 30); do
+  gw_img="$(timeout 12 ros2 topic echo --once --no-arr "$GATEWAY_IMAGE_TOPIC" sensor_msgs/msg/Image 2>/dev/null)"
+  grep -q "encoding: rgb8" <<<"$gw_img" && break
   sleep 1
 done
 kill "$cap_pid" 2>/dev/null; wait "$cap_pid" 2>/dev/null
-log "ros2 topic echo --once --no-arr $IMAGE_TOPIC ->"; echo "$img" | sed 's/^/    /'
-if grep -q "encoding: rgb8" <<<"$img"; then
-  log "GATE 5 ok: native sensor_msgs/msg/Image received with encoding rgb8"
-elif [ "$STRICT_IMAGE" = "1" ]; then
-  fail "no sensor_msgs/msg/Image with encoding rgb8 on $IMAGE_TOPIC"
-else
-  log "GATE 5 advisory (STRICT_IMAGE=0): no Image frame seen; continuing"
-fi
+log "ros2 topic echo --once --no-arr $GATEWAY_IMAGE_TOPIC ->"; echo "$gw_img" | sed 's/^/    /'
+grep -q "encoding: rgb8" <<<"$gw_img"     || fail "no republished Image with encoding rgb8 on $GATEWAY_IMAGE_TOPIC"
+grep -q "width: $IMAGE_W" <<<"$gw_img"     || fail "republished Image width != $IMAGE_W on $GATEWAY_IMAGE_TOPIC"
+grep -q "height: $IMAGE_H" <<<"$gw_img"    || fail "republished Image height != $IMAGE_H on $GATEWAY_IMAGE_TOPIC"
+grep -q "step: $IMAGE_STEP" <<<"$gw_img"   || fail "republished Image step != $IMAGE_STEP on $GATEWAY_IMAGE_TOPIC"
+log "GATE 6 ok: ros2_gateway params round-trip + republished Image (${IMAGE_W}x${IMAGE_H} rgb8 step ${IMAGE_STEP})"
 
 echo
 echo "::::: ALL INTEGRATION GATES PASSED :::::"
-log "real pi_runtime daemon (hardware mocked) is a full ROS 2 citizen down to the CDR bytes"
+log "real pi_runtime daemon + ros2_gateway relay are full ROS 2 citizens down to the CDR bytes"
 exit 0

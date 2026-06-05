@@ -8,8 +8,12 @@
 #   GATE 1  ros2 node/service/topic list  -> enumeration (examples + real daemon)
 #   GATE 2  ros2 topic echo + cdr_assert.py -> topics + BYTE-LEVEL CDR (String, Float32)
 #   GATE 3  ros2 param get|set + reject     -> parameters
-#   GATE 4  ros2 service call (SetBool)      -> real pi_runtime capture service
-#   GATE 5  ros2 topic echo (Image)          -> native sensor_msgs/msg/Image (semantic)
+#   GATE 4  ros2 service call (SetBool)      -> real pi_runtime capture service (+JSON keys)
+#   GATE 5  cdr_assert.py (Image)            -> native sensor_msgs/msg/Image BYTE-LEVEL CDR
+#   GATE 6  ros2 param get|set + topic echo  -> ros2_gateway relay: params + republished Image
+#
+# The integration job builds on ros:jazzy (ROS_DISTRO=jazzy), colcon-builds and
+# launches the ros2_gateway relay, and gates on all six checks via the verifier.
 name: ci
 
 on:
@@ -45,9 +49,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ./pico-ros-py ./pi_runtime pytest
 
+      - name: Provision mosquitto (so the pgwaam MQTT test RUNS, not skips)
+        # The pgwaam online-pulse test keys off `shutil.which("mosquitto")` and
+        # spawns its OWN broker on a free port. We only need the binary present;
+        # stop the auto-started systemd unit so it never contends for :1883.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mosquitto
+          sudo systemctl stop mosquitto || true
+
       - name: Run unit tests
-        # mosquitto is not installed on the runner, so the pgwaam MQTT
-        # end-to-end test skips itself with a clear reason (by design).
+        # mosquitto is provisioned above, so the pgwaam MQTT end-to-end test
+        # RUNS (it spawns its own broker on a free port) instead of skipping.
         run: python -m pytest pi_runtime/tests pico-ros-py/tests -v
 
   ros2-interop:
@@ -57,6 +70,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Bring up integration harness and gate on the ros2 verifier
+        # Pin the ROS distro to jazzy per the brief; it drives the verifier AND
+        # the new gateway service build args. Overridable for local runs.
+        env:
+          ROS_DISTRO: jazzy
         run: |
           docker compose -f ci/compose.integration.yml up --build \
             --abort-on-container-exit --exit-code-from verifier

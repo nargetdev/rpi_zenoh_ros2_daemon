@@ -76,16 +76,38 @@ def test_build_backend_rejects_unknown(tmp_path):
 
 
 def test_mock_backend_captures_and_persists(tmp_path):
-    settings = _settings(tmp_path, {"type": "mock"})
+    """Default mock now synthesizes a real 640x480 date-stamped rgb8 frame."""
+    import datetime
+
+    settings = _settings(tmp_path, {"type": "mock", "encoding": "image/png"})
+    frame = build_backend(settings).capture()
+
+    assert frame.encoding == "image/png"  # the configured encoding
+    assert (frame.width, frame.height) == (640, 480)  # synthesized default dims
+    # payload decodes to a real 640x480 RGB image
+    with PilImage.open(io.BytesIO(frame.payload)) as im:
+        assert im.size == (640, 480)
+        assert im.convert("RGB").mode == "RGB"
+    # date stamp is observable downstream and is today's YYYY-MM-DD
+    assert frame.metadata["synthesized_date"] == datetime.date.today().isoformat()
+    assert frame.metadata["camera_id"] == "Canon_EOS_6D"
+    assert frame.metadata["camera_model"] == "Canon EOS 6D"
+    assert frame.image_key == f"dslr/Canon_EOS_6D/frames/{frame.capture_id}"
+    # persistence wrote the bytes to disk and recorded the path
+    persisted = Path(frame.metadata["persisted_path"])
+    assert persisted.exists()
+    assert persisted.read_bytes() == frame.payload
+
+
+def test_mock_backend_legacy_placeholder(tmp_path):
+    """``mock_synthesize=false`` preserves the original embedded 1x1 PNG."""
+    settings = _settings(tmp_path, {"type": "mock", "mock_synthesize": False})
     frame = build_backend(settings).capture()
 
     assert frame.payload == capture_backends.MOCK_IMAGE_BYTES
     assert frame.encoding == "image/jpeg"  # CaptureBackendConfig default
     assert (frame.width, frame.height) == (1, 1)  # the embedded 1x1 PNG
-    assert frame.metadata["camera_id"] == "Canon_EOS_6D"
-    assert frame.metadata["camera_model"] == "Canon EOS 6D"
-    assert frame.image_key == f"dslr/Canon_EOS_6D/frames/{frame.capture_id}"
-    # persistence wrote the bytes to disk and recorded the path
+    assert "synthesized_date" not in frame.metadata
     persisted = Path(frame.metadata["persisted_path"])
     assert persisted.exists()
     assert persisted.read_bytes() == capture_backends.MOCK_IMAGE_BYTES

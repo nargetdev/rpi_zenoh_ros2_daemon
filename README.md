@@ -35,6 +35,51 @@ Brings up a raw `zenohd` router, two pure-Zenoh `pico-ros-py` daemons (a talker
 node and a parameter-server node, **no ROS 2 installed**), and one ROS 2 +
 `rmw_zenoh` verifier that gates the run with the stock `ros2` CLI.
 
+### Run the full integration gate locally
+
+The smoke gate above proves the example daemons. The **integration** gate
+additionally boots the REAL `pi_runtime` daemon (hardware mocked) and the
+`ros2_gateway` relay, and asserts six gates in a single run:
+
+```bash
+ROS_DISTRO=jazzy docker compose -f ci/compose.integration.yml up --build \
+    --abort-on-container-exit --exit-code-from verifier
+# exit 0 == "::::: ALL INTEGRATION GATES PASSED :::::"
+# On failure: docker compose -f ci/compose.integration.yml logs gateway dslr verifier
+```
+
+The verifier (`ci/verifier/verify_integration.sh`) gates on:
+
+| Gate | Assertion |
+|------|-----------|
+| G1 | enumeration: example nodes + the real daemon's service/topic |
+| G2 | byte-level CDR for `std_msgs/String` (`/chatter`) + `std_msgs/Float32` (core-temp) |
+| G3 | `/picoros` param list/get/set + out-of-range reject |
+| G4 | `SetBool` capture service returns `success=True` + JSON keys (`camera_id`, `request_id`) |
+| G5 | **native** `sensor_msgs/Image` byte-level CDR: width 640 / height 480 / `rgb8` / step 1920 |
+| G6 | **`ros2_gateway`** relay: its four declared params round-trip via `ros2 param get/set`, and its republished Image topic echoes a 640×480 `rgb8` frame (step 1920) |
+
+The `gateway` service (`ci/gateway/Dockerfile`) colcon-builds and launches
+`gateway_node` against `ci/config/gateway-ci.params.yaml`. It is a *verified
+reference relay* — the native one-hop path (G5) remains the production image path;
+the gateway is exercised in CI per the brief, not promoted.
+
+The mock camera now renders a **date-stamped 640×480 `rgb8`** frame (today's date,
+e.g. `2026-06-05`) via Pillow instead of a degenerate 1×1 PNG, so the downstream
+width/height/encoding/step assertions are meaningful. Tune it through the mock
+backend config knobs `mock_synthesize` (default `true`; set `false` for the legacy
+1×1 placeholder), `mock_width` (default `640`), and `mock_height` (default `480`).
+
+### Run the pure-Python unit suite
+
+The unit suite includes a pgwaam MQTT online-pulse test that spawns its own broker;
+install the `mosquitto` binary so it RUNS instead of skipping:
+
+```bash
+sudo apt-get install -y mosquitto   # Linux  (or: brew install mosquitto  on macOS)
+cd pi_runtime && python -m pytest tests -v
+```
+
 ## Data Flow
 
 One-hop native path (no gateway in the image path):
