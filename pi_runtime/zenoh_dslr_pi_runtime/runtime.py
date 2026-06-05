@@ -15,6 +15,7 @@ from .heartbeat import HeartbeatBroadcaster, PgwaamOnlineBroadcaster
 from .models import PiRuntimeSettings
 from .ros2_core_temp_publisher import Ros2CoreTempBroadcaster
 from .ros2_image_publisher import Ros2ImagePublisher
+from .zenoh_native_session import force_native_client_mode
 
 
 LOGGER = logging.getLogger("zenoh_dslr_pi_runtime")
@@ -51,6 +52,9 @@ class PiDslrRuntime:
             level=logging.INFO,
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
+        # Defensive: ensure native ROS 2 Zenoh sessions are CLIENT mode for
+        # non-CLI entry points (tests, embedders). Idempotent — safe after cli.py.
+        force_native_client_mode()
         config = (
             zenoh.Config.from_file(self._settings.zenoh_config_path)
             if self._settings.zenoh_config_path

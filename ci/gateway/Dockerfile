@@ -16,7 +16,7 @@
 #
 # Mirrors `ci/verifier/Dockerfile` (ROS base + rmw_zenoh install + source-ROS
 # ENTRYPOINT) and `ci/dslr/Dockerfile` (repo-root context + COPY ci/config/).
-ARG ROS_DISTRO=jazzy
+ARG ROS_DISTRO=kilted
 FROM ros:${ROS_DISTRO}-ros-base
 ARG ROS_DISTRO
 
@@ -38,7 +38,7 @@ RUN apt-get update \
 # image is single-purpose so installing the two pure-Python deps system-wide is
 # fine.
 RUN pip install --no-cache-dir --break-system-packages \
-        "eclipse-zenoh>=1.0,<2.0" "Pillow>=9.0.0"
+        "eclipse-zenoh==1.8.0" "Pillow>=9.0.0"
 
 ENV ROS_DISTRO=${ROS_DISTRO} \
     RMW_IMPLEMENTATION=rmw_zenoh_cpp \

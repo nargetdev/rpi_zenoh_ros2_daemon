@@ -8,7 +8,7 @@ RUN apt-get update \
         python3-pil \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --break-system-packages "eclipse-zenoh>=1.0,<2.0"
+RUN python3 -m pip install --break-system-packages "eclipse-zenoh==1.8.0"
 
 WORKDIR /workspace/ros2_gateway
 COPY ros2_gateway/src ./src

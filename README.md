@@ -42,7 +42,7 @@ additionally boots the REAL `pi_runtime` daemon (hardware mocked) and the
 `ros2_gateway` relay, and asserts six gates in a single run:
 
 ```bash
-ROS_DISTRO=jazzy docker compose -f ci/compose.integration.yml up --build \
+ROS_DISTRO=kilted docker compose -f ci/compose.integration.yml up --build \
     --abort-on-container-exit --exit-code-from verifier
 # exit 0 == "::::: ALL INTEGRATION GATES PASSED :::::"
 # On failure: docker compose -f ci/compose.integration.yml logs gateway dslr verifier

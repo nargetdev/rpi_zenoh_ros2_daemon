@@ -1,5 +1,10 @@
 # SPIKE RESULTS — colorbars CDR over rmw_zenoh
 
+> **Historical note:** these spikes were originally run against ROS 2 **jazzy**.
+> The project now targets ROS 2 **kilted** (see `CLAUDE.md`); the `jazzy`
+> references below are preserved as an accurate record of the original runs and
+> are **not** current guidance.
+
 **Goal:** Validate the abstraction — prove `zenoh_ros2_sdk.ROS2Publisher` can emit a
 correctly CDR-encoded `sensor_msgs/msg/Image` that a **real `rmw_zenoh` ROS 2
 subscriber** discovers and reads back. A tiny synthetic colorbars frame is the probe.

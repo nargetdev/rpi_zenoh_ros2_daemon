@@ -81,7 +81,7 @@ services:
       context: ..
       dockerfile: ci/gateway/Dockerfile
       args:
-        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+        ROS_DISTRO: ${ROS_DISTRO:-kilted}
     image: zenoh-dslr-gateway:ci
     # The node opens TWO zenoh sessions (raw blob sub + rmw_zenoh publish); both
     # talk TCP to `router`. Backup for zenoh-c's SHM probe (SHM is off in both
@@ -96,7 +96,7 @@ services:
       context: .
       dockerfile: verifier/Dockerfile
       args:
-        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+        ROS_DISTRO: ${ROS_DISTRO:-kilted}
     image: rpi-zenoh-ros2-verifier:ci
     # Override the image default (/verify.sh); run the 5-gate integration script.
     command: ["/verify_integration.sh"]

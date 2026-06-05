@@ -20,7 +20,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV ZENOH_ROS2_SDK_CACHE=/opt/zenoh_ros2_sdk_cache \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ZENOH_SESSION_CONFIG_URI=/config/zenoh-session.json5
 
 WORKDIR /app
 

@@ -24,7 +24,7 @@ setup(
             ],
         ),
     ],
-    install_requires=["setuptools", "eclipse-zenoh>=1.0,<2.0", "Pillow>=9.0.0"],
+    install_requires=["setuptools", "eclipse-zenoh==1.8.0", "Pillow>=9.0.0"],
     zip_safe=True,
     maintainer="OpenAI Codex",
     maintainer_email="devnull@example.com",

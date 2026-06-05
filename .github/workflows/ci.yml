@@ -12,7 +12,7 @@
 #   GATE 5  cdr_assert.py (Image)            -> native sensor_msgs/msg/Image BYTE-LEVEL CDR
 #   GATE 6  ros2 param get|set + topic echo  -> ros2_gateway relay: params + republished Image
 #
-# The integration job builds on ros:jazzy (ROS_DISTRO=jazzy), colcon-builds and
+# The integration job builds on ros:kilted (ROS_DISTRO=kilted), colcon-builds and
 # launches the ros2_gateway relay, and gates on all six checks via the verifier.
 name: ci
 
@@ -70,10 +70,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Bring up integration harness and gate on the ros2 verifier
-        # Pin the ROS distro to jazzy per the brief; it drives the verifier AND
+        # Pin the ROS distro to kilted per the brief; it drives the verifier AND
         # the new gateway service build args. Overridable for local runs.
         env:
-          ROS_DISTRO: jazzy
+          ROS_DISTRO: kilted
         run: |
           docker compose -f ci/compose.integration.yml up --build \
             --abort-on-container-exit --exit-code-from verifier
