@@ -1,0 +1,28 @@
+# pgwaam colorbars validation — artifact of the orchestrator session.
+#
+# Validates that the pi can publish a correctly CDR-encoded sensor_msgs/Image
+# (synthetic colorbars) onto the LIVE Zenoh router at 172.31.1.252:7447 and
+# that it round-trips back, decoded, through that same router. Plus a fleet
+# heartbeat pane so the whole pi fleet's liveness is visible at once.
+#
+#   load on the pi:   tmuxp load -d ~/rpi_zenoh_ros2_daemon/spikes/validate.tmuxp.yaml
+#   attach:           tmux attach -t pgwaam-colorbars-validate
+#   tear down:        tmux kill-session -t pgwaam-colorbars-validate
+session_name: pgwaam-colorbars-validate
+start_directory: ~/rpi_zenoh_ros2_daemon
+windows:
+  - window_name: colorbars
+    layout: even-horizontal
+    panes:
+      - shell_command:
+          - clear; echo "== PUBLISHER  ->  tcp/172.31.1.252:7447  (sensor_msgs/Image on /spike/colorbars) =="
+          - env -u ZENOH_CONFIG_OVERRIDE -u ZENOH_SESSION_CONFIG_URI PYTHONUNBUFFERED=1 /opt/pgwaam/venv/bin/python spikes/colorbars_cdr_publisher.py --router-ip 172.31.1.252 --router-port 7447 --domain-id 0 --rate 2 --duration 0
+      - shell_command:
+          - clear; echo "== VERIFIER  <-  router (CDR-decode the Image back) =="
+          - sleep 3
+          - /opt/pgwaam/venv/bin/python spikes/colorbars_verify_sub.py 172.31.1.252:7447 0
+  - window_name: fleet
+    panes:
+      - shell_command:
+          - clear; echo "== FLEET HEARTBEATS  (MQTT pgwaam/heartbeat/#) =="
+          - /opt/pgwaam/venv/bin/python spikes/fleet_heartbeat_mon.py 172.31.1.252
