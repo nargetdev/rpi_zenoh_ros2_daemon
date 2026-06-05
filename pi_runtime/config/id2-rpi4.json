@@ -1,0 +1,44 @@
+{
+  "camera_model": "Canon EOS 6D",
+  "camera_id": "Canon_EOS_6D",
+  "capture_service_name": "/dslr/Canon_EOS_6D/capture",
+  "frame_key_prefix": "dslr/Canon_EOS_6D/frames",
+  "zenoh_config_path": "../../deploy/pi/zenoh-client-id2.json5",
+  "router_ip": "172.31.1.252",
+  "router_port": 7447,
+  "capture_backend": {
+    "type": "gphoto2",
+    "encoding": "image/jpeg",
+    "port": "usb:001,007",
+    "filename_pattern": "{camera_id}_{capture_id}"
+  },
+  "persistence": {
+    "enabled": true,
+    "directory": "./captures/Canon_EOS_6D",
+    "max_bytes": 754974720
+  },
+  "publish_delay_ms": 0,
+  "heartbeat": {
+    "enabled": true,
+    "interval_s": 5.0,
+    "report_core_temp": true,
+    "report_throttled": true,
+    "mqtt": {
+      "enabled": true,
+      "host": "172.31.1.252",
+      "port": 1883
+    }
+  },
+  "ros2_publish": {
+    "enabled": true,
+    "topic": null,
+    "encoding": "rgb8",
+    "max_width": 640,
+    "max_height": 480,
+    "domain_id": 0,
+    "router_ip": "172.31.1.252",
+    "router_port": 7447,
+    "qos_reliability": "reliable",
+    "qos_history_depth": 5
+  }
+}
