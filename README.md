@@ -85,6 +85,47 @@ For the first cut, the capture request uses `std_srvs/srv/SetBool` so the Pi can
 
 If you later want richer request fields such as capture profile, exposure mode, or lens selection, the next step is to move from `Trigger` to a custom service type that `zenoh_ros2_sdk` can load cleanly in your deployment.
 
+## Per-capture exposure via ROS 2 parameters
+
+Exposure is **decoupled from the trigger**: set it any time, capture any time. When
+`exposure.enabled` is on, the Pi runs a `pico-ros-py` parameter-server node that
+exposes the gphoto2 exposure keys as standard ROS 2 parameters — so **no custom
+service interface is needed on the caller**. The values are persistent; each
+`SetBool` capture reads the current values and applies them via
+`gphoto2 --set-config` immediately before the frame is taken (and echoes them
+back in the capture metadata under `exposure`).
+
+```bash
+# set persistently, any time (these stick until changed):
+ros2 param set /dslr_Canon_EOS_6D shutterspeed 1/250
+ros2 param set /dslr_Canon_EOS_6D aperture 5.6
+ros2 param set /dslr_Canon_EOS_6D iso 400
+ros2 param list /dslr_Canon_EOS_6D     # shutterspeed, aperture, iso, autoexposuremode
+
+# capture any time — uses whatever the params are right now:
+ros2 service call /dslr/Canon_EOS_6D/capture std_srvs/srv/SetBool "{data: true}"
+```
+
+An empty value means "leave the camera as-is" (no `--set-config` issued for that
+key). The node is opt-in and requires the `exposure` extra:
+
+```bash
+uv run --extra exposure python3 -m zenoh_dslr_pi_runtime.cli --config pi_runtime/config/id2-rpi4.json
+```
+
+```json
+"exposure": {
+  "enabled": true,
+  "node_name": "dslr_Canon_EOS_6D",
+  "router_ip": "172.31.1.252",
+  "router_port": 7447,
+  "domain_id": 0,
+  "params": { "shutterspeed": "", "aperture": "", "iso": "", "autoexposuremode": "" }
+}
+```
+
+The values must match the camera's gphoto2 choice lists (e.g. `gphoto2 --get-config shutterspeed`); for `shutterspeed`/`aperture`/`iso` to take effect the body should be in Manual (`autoexposuremode=Manual`). An invalid value makes that capture fail with the gphoto2 error.
+
 ## Quick Start
 
 ### Raspberry Pi

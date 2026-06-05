@@ -22,7 +22,13 @@ MOCK_IMAGE_BYTES = base64.b64decode(
 
 class CaptureBackend(ABC):
     @abstractmethod
-    def capture(self) -> CaptureResult:
+    def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
+        """Capture a frame.
+
+        ``exposure`` is an optional ``{gphoto2_key: value}`` mapping of camera
+        settings to apply for this capture (only the gphoto2 backend uses it;
+        other backends ignore it).
+        """
         raise NotImplementedError
 
     def _build_metadata(
@@ -96,7 +102,7 @@ class MockCaptureBackend(CaptureBackend):
         self._config = config
         self._persistence = persistence
 
-    def capture(self) -> CaptureResult:
+    def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         capture_id = uuid.uuid4().hex
         width, height = self._read_dimensions(MOCK_IMAGE_BYTES)
         return self._finalize_capture(
@@ -116,7 +122,7 @@ class CommandCaptureBackend(CaptureBackend):
         if not self._config.command:
             raise ValueError("command backend requires a command field")
 
-    def capture(self) -> CaptureResult:
+    def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         capture_id = uuid.uuid4().hex
         command = self._config.command.format(
             camera_id=self._settings.camera_id,
@@ -149,7 +155,7 @@ class GPhoto2CaptureBackend(CaptureBackend):
         self._config = config
         self._persistence = persistence
 
-    def capture(self) -> CaptureResult:
+    def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         capture_id = uuid.uuid4().hex
         filename_pattern = self._config.filename_pattern.format(
             camera_id=self._settings.camera_id,
@@ -158,15 +164,26 @@ class GPhoto2CaptureBackend(CaptureBackend):
         )
         with tempfile.TemporaryDirectory(prefix="zenoh-dslr-") as temp_dir:
             target_template = str(Path(temp_dir) / f"{filename_pattern}.%C")
-            command = [
-                "gphoto2",
-                "--capture-image-and-download",
-                "--force-overwrite",
-                "--filename",
-                target_template,
-            ]
+            command = ["gphoto2"]
             if self._config.port:
                 command.extend(["--port", self._config.port])
+            # gphoto2 runs actions left-to-right, so any --set-config must come
+            # BEFORE --capture-image-and-download to take effect for this frame.
+            applied_exposure: dict[str, str] = {}
+            for key, value in (exposure or {}).items():
+                text = str(value).strip()
+                if not text:
+                    continue
+                command.extend(["--set-config", f"{key}={text}"])
+                applied_exposure[key] = text
+            command.extend(
+                [
+                    "--capture-image-and-download",
+                    "--force-overwrite",
+                    "--filename",
+                    target_template,
+                ]
+            )
             if self._config.keep_on_camera:
                 command.append("--keep")
             if self._config.extra_args:
@@ -202,6 +219,8 @@ class GPhoto2CaptureBackend(CaptureBackend):
                 frame.metadata["gphoto2_stderr"] = stderr
             if self._config.port:
                 frame.metadata["gphoto2_port"] = self._config.port
+            if applied_exposure:
+                frame.metadata["exposure"] = applied_exposure
             frame.metadata["downloaded_files"] = [str(path) for path in downloaded]
             return frame
 

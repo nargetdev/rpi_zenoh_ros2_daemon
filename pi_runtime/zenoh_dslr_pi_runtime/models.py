@@ -124,6 +124,33 @@ class HeartbeatConfig:
 
 
 @dataclass(slots=True)
+class ExposureParamsConfig:
+    """Persistent camera exposure settings exposed as ROS 2 parameters.
+
+    When enabled, a ``pico-ros-py`` node serves the standard ROS 2 parameter
+    interface so exposure can be driven from ``ros2 param set``. The current
+    values are applied via ``gphoto2 --set-config`` immediately before each
+    capture. An empty/unset value means "leave the camera as-is" (no
+    ``--set-config`` is issued for that key).
+    """
+
+    enabled: bool = False
+    node_name: str = "dslr_camera"
+    router_ip: str = "172.31.1.252"
+    router_port: int = 7447
+    domain_id: int = 0
+    # gphoto2 config key -> initial value ("" = don't touch)
+    params: dict[str, str] = field(
+        default_factory=lambda: {
+            "shutterspeed": "",
+            "aperture": "",
+            "iso": "",
+            "autoexposuremode": "",
+        }
+    )
+
+
+@dataclass(slots=True)
 class PiRuntimeSettings:
     camera_id: str
     camera_model: str
@@ -139,6 +166,7 @@ class PiRuntimeSettings:
     device_id: str = field(default_factory=default_device_id)
     pgwaam: PgwaamOnlineConfig = field(default_factory=PgwaamOnlineConfig)
     ros2_publish: Ros2PublishConfig = field(default_factory=Ros2PublishConfig)
+    exposure: ExposureParamsConfig = field(default_factory=ExposureParamsConfig)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "PiRuntimeSettings":
@@ -171,6 +199,13 @@ class PiRuntimeSettings:
 
         ros2_publish = _ros2_publish_from_payload(payload.get("ros2_publish", {}), camera_id)
 
+        exposure = _exposure_from_payload(
+            payload.get("exposure", {}),
+            camera_id,
+            ros2_publish.router_ip,
+            ros2_publish.router_port,
+        )
+
         return cls(
             camera_id=camera_id,
             camera_model=camera_model,
@@ -186,6 +221,7 @@ class PiRuntimeSettings:
             device_id=device_id,
             pgwaam=pgwaam,
             ros2_publish=ros2_publish,
+            exposure=exposure,
         )
 
 
@@ -242,6 +278,30 @@ def _ros2_publish_from_payload(payload: dict[str, Any], camera_id: str) -> Ros2P
         router_port=int(payload.get("router_port", 7447)),
         qos_reliability=payload.get("qos_reliability", "reliable"),
         qos_history_depth=int(payload.get("qos_history_depth", 5)),
+    )
+
+
+def _exposure_from_payload(
+    payload: dict[str, Any],
+    camera_id: str,
+    fallback_router_ip: str,
+    fallback_router_port: int,
+) -> ExposureParamsConfig:
+    params = {
+        "shutterspeed": "",
+        "aperture": "",
+        "iso": "",
+        "autoexposuremode": "",
+    }
+    for key, value in (payload.get("params") or {}).items():
+        params[str(key)] = "" if value is None else str(value)
+    return ExposureParamsConfig(
+        enabled=bool(payload.get("enabled", False)),
+        node_name=payload.get("node_name") or f"dslr_{camera_id}",
+        router_ip=payload.get("router_ip", fallback_router_ip),
+        router_port=int(payload.get("router_port", fallback_router_port)),
+        domain_id=int(payload.get("domain_id", 0)),
+        params=params,
     )
 
 

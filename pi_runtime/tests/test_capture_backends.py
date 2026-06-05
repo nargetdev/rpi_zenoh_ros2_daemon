@@ -198,6 +198,59 @@ def test_gphoto2_backend_builds_command_with_flags(tmp_path, monkeypatch):
     assert frame.metadata["gphoto2_port"] == "usb:001,007"
 
 
+def test_gphoto2_backend_applies_exposure_before_capture(tmp_path, monkeypatch):
+    """Per-capture exposure is injected as --set-config BEFORE the capture action.
+
+    gphoto2 runs options left-to-right, so a --set-config that lands after
+    --capture-image-and-download would have no effect on the frame. Order is the
+    contract here, plus the applied values are echoed into metadata.
+    """
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = list(command)
+        out_dir = Path(command[command.index("--filename") + 1]).parent
+        (out_dir / "x.jpg").write_bytes(_jpeg_bytes())
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(capture_backends.subprocess, "run", fake_run)
+    settings = _settings(tmp_path, {"type": "gphoto2", "port": "usb:001,007"})
+
+    frame = build_backend(settings).capture(
+        exposure={"shutterspeed": "1/250", "iso": "400", "aperture": ""}
+    )
+
+    cmd = seen["command"]
+    capture_at = cmd.index("--capture-image-and-download")
+    # both non-empty settings present, each as a `key=value` after --set-config
+    assert cmd[cmd.index("--set-config") + 1] in {"shutterspeed=1/250", "iso=400"}
+    set_pairs = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "--set-config"]
+    assert set_pairs == ["shutterspeed=1/250", "iso=400"]
+    # every --set-config index is before the capture action
+    assert all(i < capture_at for i, tok in enumerate(cmd) if tok == "--set-config")
+    # the empty aperture is skipped entirely
+    assert "aperture=" not in cmd and "aperture" not in " ".join(cmd)
+    assert frame.metadata["exposure"] == {"shutterspeed": "1/250", "iso": "400"}
+
+
+def test_gphoto2_backend_no_exposure_means_no_set_config(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = list(command)
+        out_dir = Path(command[command.index("--filename") + 1]).parent
+        (out_dir / "x.jpg").write_bytes(_jpeg_bytes())
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(capture_backends.subprocess, "run", fake_run)
+    settings = _settings(tmp_path, {"type": "gphoto2"})
+
+    frame = build_backend(settings).capture()  # no exposure passed
+
+    assert "--set-config" not in seen["command"]
+    assert "exposure" not in frame.metadata
+
+
 def test_gphoto2_backend_raises_when_no_file_downloaded(tmp_path, monkeypatch):
     monkeypatch.setattr(capture_backends.subprocess, "run", _fake_gphoto2(None))
     settings = _settings(tmp_path, {"type": "gphoto2"})
