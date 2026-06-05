@@ -167,3 +167,49 @@ ALL BARS MATCH: True
 6. **Distro mix is fine.** Publisher used the SDK's own RIHS01 computation; router +
    subscriber were ROS 2 jazzy. The RIHS01 hash for `sensor_msgs/msg/Image` matched, so
    cross-distro interop held for this message.
+
+---
+
+## Foxglove confirmation
+
+**Foxglove on `soma:8765` (`ws://172.31.1.252:8765`) displayed `/spike/colorbars` live,
+end-to-end** — the colorbars rendered in the Foxglove Image panel directly off the native
+`sensor_msgs/msg/Image` published by `zenoh_ros2_sdk.ROS2Publisher`, with no gateway in the
+path. This is what motivated promoting the spike into a production path (`pi_runtime`'s
+`ros2_publish` / `Ros2ImagePublisher`) and retiring the gateway for images.
+
+---
+
+## Productionization validation (`Ros2ImagePublisher`, native one-hop)
+
+The spike is now a production path: `pi_runtime/.../ros2_image_publisher.py`
+(`Ros2ImagePublisher`), wired into `runtime.py` behind the opt-in `ros2_publish` config
+block. To validate the *production* code (not just the spike), a synthetic JPEG colorbars
+frame was fed THROUGH `Ros2ImagePublisher` (`spikes/dslr_image_publish_example.py`) pointed
+at the LIVE router `172.31.1.252:7447`, and CDR-decoded back off the router.
+
+Publisher (macbook, daemon venv → live router):
+```
+env -u ZENOH_CONFIG_OVERRIDE -u ZENOH_SESSION_CONFIG_URI PYTHONUNBUFFERED=1 \
+  pi_runtime/.venv/bin/python spikes/dslr_image_publish_example.py \
+    --router-ip 172.31.1.252 --router-port 7447 --domain-id 0 \
+    --camera-id Canon_EOS_6D --rate 2 --duration 18
+# [example] synthetic JPEG src=1600x1200 (41500 bytes)
+# [example] topic=/dslr/Canon_EOS_6D/image_raw ...
+# [example] expect downsampled rgb8 Image ~ 640x480 (step=1920)
+# [example] total attempted=32 published_ok=32
+```
+
+Verifier (plain-Zenoh client → router, rosbags CDR decode of
+`0/dslr/Canon_EOS_6D/image_raw/**`):
+```
+[verify] #1 640x480 rgb8 step=1920 bytes=921600 first_px=[255,255,255,255,255,255] frame_id=Canon_EOS_6D [GREEN]
+... 32 frames, all GREEN ...
+[verify] DONE total=32
+```
+
+**Result: 32/32 frames round-tripped.** A 1600×1200 JPEG decoded → downsampled to **640×480
+`rgb8`** (`step=1920`, `len(data)=921600=480*1920`), `frame_id=Canon_EOS_6D`, first pixel
+`(255,255,255)` = the white colorbar. The production publisher's decode→downsample→native
+`sensor_msgs/msg/Image` path is confirmed over the real router. (Router was reachable; no
+fabrication.)
