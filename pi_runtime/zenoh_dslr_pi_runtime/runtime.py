@@ -10,6 +10,7 @@ import zenoh
 from zenoh_ros2_sdk import ROS2ServiceServer
 
 from .capture_backends import build_backend
+from .exposure_params import ExposureParameterServer
 from .heartbeat import HeartbeatBroadcaster, PgwaamOnlineBroadcaster
 from .models import PiRuntimeSettings
 from .ros2_core_temp_publisher import Ros2CoreTempBroadcaster
@@ -34,6 +35,9 @@ class PiDslrRuntime:
             if settings.ros2_publish.enabled
             else None
         )
+        self._exposure = (
+            ExposureParameterServer(settings.exposure)
+            if settings.exposure.enabled
         self._core_temp = (
             Ros2CoreTempBroadcaster(settings.core_temp_publish)
             if settings.core_temp_publish.enabled
@@ -67,12 +71,16 @@ class PiDslrRuntime:
             heartbeat.start()
             pgwaam = PgwaamOnlineBroadcaster(self._settings)
             pgwaam.start()
+            if self._exposure is not None:
+                self._exposure.start()
             if self._core_temp is not None:
                 self._core_temp.start()
             try:
                 while not self._stop_event.is_set():
                     time.sleep(0.25)
             finally:
+                if self._exposure is not None:
+                    self._exposure.stop()
                 if self._core_temp is not None:
                     self._core_temp.stop()
                 pgwaam.stop()
@@ -88,7 +96,10 @@ class PiDslrRuntime:
         def do_capture(request_id: str) -> None:
             try:
                 LOGGER.info("capture job %s started for %s", request_id, self._settings.camera_id)
-                frame = self._backend.capture()
+                exposure = self._exposure.current() if self._exposure is not None else None
+                if exposure:
+                    LOGGER.info("capture job %s applying exposure %s", request_id, exposure)
+                frame = self._backend.capture(exposure=exposure)
                 if self._settings.publish_delay_ms > 0:
                     time.sleep(self._settings.publish_delay_ms / 1000.0)
                 session.put(

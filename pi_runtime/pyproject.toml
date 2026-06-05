@@ -17,6 +17,15 @@ dependencies = [
   "numpy>=1.21",
 ]
 
+[project.optional-dependencies]
+# Opt-in: serve camera exposure as ROS 2 parameters (ros2 param get/set) via
+# pico-ros-py. Only needed when `exposure.enabled` is true in the config.
+#   uv run --extra exposure python3 -m zenoh_dslr_pi_runtime.cli --config ...
+exposure = ["pico-ros-py"]
+
+[tool.uv.sources]
+pico-ros-py = { path = "../pico-ros-py", editable = true }
+
 [dependency-groups]
 dev = [
   "pytest>=8.0",

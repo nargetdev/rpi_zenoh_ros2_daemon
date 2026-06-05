@@ -40,5 +40,18 @@
     "router_port": 7447,
     "qos_reliability": "reliable",
     "qos_history_depth": 5
+  },
+  "exposure": {
+    "enabled": true,
+    "node_name": "dslr_Canon_EOS_6D",
+    "router_ip": "172.31.1.252",
+    "router_port": 7447,
+    "domain_id": 0,
+    "params": {
+      "shutterspeed": "",
+      "aperture": "",
+      "iso": "",
+      "autoexposuremode": ""
+    }
   }
 }
