@@ -12,6 +12,9 @@ dependencies = [
   "Pillow>=9.0.0",
   "zenoh-ros2-sdk>=0.1.0",
   "paho-mqtt>=1.6,<3.0",
+  # Required by the native ROS 2 Image publisher: rosbags' CDR serializer calls
+  # .view() on uint8[] array fields, so Image.data must be a numpy array.
+  "numpy>=1.21",
 ]
 
 [dependency-groups]

@@ -87,6 +87,31 @@ class PgwaamOnlineConfig:
 
 
 @dataclass(slots=True)
+class Ros2PublishConfig:
+    """Native ROS 2 ``sensor_msgs/msg/Image`` publication over rmw_zenoh.
+
+    When ``enabled``, captured frames are published a second time (alongside the
+    existing raw Zenoh blob ``put``) as a native CDR-encoded ``sensor_msgs/msg/Image``
+    via ``zenoh_ros2_sdk.ROS2Publisher``. This is the one-hop path that ``soma``'s
+    rmw_zenoh router + ``foxglove_bridge`` (or any ROS 2 node) can display directly,
+    retiring the separate ``ros2_gateway`` relay for images.
+
+    SHARED CONTRACT: this block must match the ansible side EXACTLY.
+    """
+
+    enabled: bool = False
+    topic: str | None = None
+    encoding: str = "rgb8"
+    max_width: int = 640
+    max_height: int = 480
+    domain_id: int = 0
+    router_ip: str = "172.31.1.252"
+    router_port: int = 7447
+    qos_reliability: str = "reliable"
+    qos_history_depth: int = 5
+
+
+@dataclass(slots=True)
 class HeartbeatConfig:
     enabled: bool = True
     interval_s: float = 5.0
@@ -110,6 +135,7 @@ class PiRuntimeSettings:
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
     device_id: str = field(default_factory=default_device_id)
     pgwaam: PgwaamOnlineConfig = field(default_factory=PgwaamOnlineConfig)
+    ros2_publish: Ros2PublishConfig = field(default_factory=Ros2PublishConfig)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "PiRuntimeSettings":
@@ -140,6 +166,8 @@ class PiRuntimeSettings:
         device_id = payload.get("device_id") or default_device_id(camera_id)
         pgwaam = _pgwaam_from_payload(payload.get("pgwaam", {}), device_id)
 
+        ros2_publish = _ros2_publish_from_payload(payload.get("ros2_publish", {}), camera_id)
+
         return cls(
             camera_id=camera_id,
             camera_model=camera_model,
@@ -154,6 +182,7 @@ class PiRuntimeSettings:
             heartbeat=heartbeat,
             device_id=device_id,
             pgwaam=pgwaam,
+            ros2_publish=ros2_publish,
         )
 
 
@@ -192,6 +221,21 @@ def _pgwaam_from_payload(payload: dict[str, Any], device_id: str) -> PgwaamOnlin
         username=payload.get("username"),
         password=payload.get("password"),
         client_id=payload.get("client_id") or f"pgwaam-{device_id}-online",
+    )
+
+
+def _ros2_publish_from_payload(payload: dict[str, Any], camera_id: str) -> Ros2PublishConfig:
+    return Ros2PublishConfig(
+        enabled=bool(payload.get("enabled", False)),
+        topic=payload.get("topic") or f"/dslr/{camera_id}/image_raw",
+        encoding=payload.get("encoding", "rgb8"),
+        max_width=int(payload.get("max_width", 640)),
+        max_height=int(payload.get("max_height", 480)),
+        domain_id=int(payload.get("domain_id", 0)),
+        router_ip=payload.get("router_ip", "172.31.1.252"),
+        router_port=int(payload.get("router_port", 7447)),
+        qos_reliability=payload.get("qos_reliability", "reliable"),
+        qos_history_depth=int(payload.get("qos_history_depth", 5)),
     )
 
 

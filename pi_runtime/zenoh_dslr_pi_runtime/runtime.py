@@ -12,6 +12,7 @@ from zenoh_ros2_sdk import ROS2ServiceServer
 from .capture_backends import build_backend
 from .heartbeat import HeartbeatBroadcaster, PgwaamOnlineBroadcaster
 from .models import PiRuntimeSettings
+from .ros2_image_publisher import Ros2ImagePublisher
 
 
 LOGGER = logging.getLogger("zenoh_dslr_pi_runtime")
@@ -27,6 +28,11 @@ class PiDslrRuntime:
         self._stop_event = threading.Event()
         self._capture_lock = threading.Lock()
         self._capture_count = 0
+        self._ros2_image_publisher = (
+            Ros2ImagePublisher(settings.ros2_publish, frame_id=settings.camera_id)
+            if settings.ros2_publish.enabled
+            else None
+        )
 
     def run(self) -> None:
         logging.basicConfig(
@@ -61,6 +67,8 @@ class PiDslrRuntime:
             finally:
                 pgwaam.stop()
                 heartbeat.stop()
+                if self._ros2_image_publisher is not None:
+                    self._ros2_image_publisher.close()
                 service_server.close()
 
     def stop(self) -> None:
@@ -86,6 +94,19 @@ class PiDslrRuntime:
                     frame.capture_id,
                     frame.image_key,
                 )
+                # Native one-hop path: publish the same frame as a ROS 2
+                # sensor_msgs/msg/Image ALONGSIDE the raw blob above. Failure
+                # tolerant by design (Ros2ImagePublisher swallows errors), so a
+                # dead router never breaks capture.
+                if self._ros2_image_publisher is not None:
+                    if self._ros2_image_publisher.publish(
+                        frame.payload, frame.encoding, frame_id=self._settings.camera_id
+                    ):
+                        LOGGER.info(
+                            "capture job %s also published native ROS 2 Image on %s",
+                            request_id,
+                            self._settings.ros2_publish.topic,
+                        )
             except Exception:
                 LOGGER.exception("capture job %s failed", request_id)
             finally:

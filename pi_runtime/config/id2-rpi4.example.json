@@ -26,5 +26,17 @@
       "host": "172.31.1.252",
       "port": 1883
     }
+  },
+  "ros2_publish": {
+    "enabled": true,
+    "topic": null,
+    "encoding": "rgb8",
+    "max_width": 640,
+    "max_height": 480,
+    "domain_id": 0,
+    "router_ip": "172.31.1.252",
+    "router_port": 7447,
+    "qos_reliability": "reliable",
+    "qos_history_depth": 5
   }
 }
