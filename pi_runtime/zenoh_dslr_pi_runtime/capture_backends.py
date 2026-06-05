@@ -53,6 +53,10 @@ def _synthesize_dated_png(width: int, height: int, date_str: str) -> bytes:
 
 
 class CaptureBackend(ABC):
+    def __init__(self, settings: PiRuntimeSettings, persistence: PersistenceBuffer) -> None:
+        self._settings = settings
+        self._persistence = persistence
+
     @abstractmethod
     def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         """Capture a frame.
@@ -130,9 +134,8 @@ class CaptureBackend(ABC):
 
 class MockCaptureBackend(CaptureBackend):
     def __init__(self, settings: PiRuntimeSettings, config: CaptureBackendConfig, persistence: PersistenceBuffer) -> None:
-        self._settings = settings
+        super().__init__(settings, persistence)
         self._config = config
-        self._persistence = persistence
 
     def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         capture_id = uuid.uuid4().hex
@@ -158,9 +161,8 @@ class MockCaptureBackend(CaptureBackend):
 
 class CommandCaptureBackend(CaptureBackend):
     def __init__(self, settings: PiRuntimeSettings, config: CaptureBackendConfig, persistence: PersistenceBuffer) -> None:
-        self._settings = settings
+        super().__init__(settings, persistence)
         self._config = config
-        self._persistence = persistence
         if not self._config.command:
             raise ValueError("command backend requires a command field")
 
@@ -193,9 +195,8 @@ class CommandCaptureBackend(CaptureBackend):
 
 class GPhoto2CaptureBackend(CaptureBackend):
     def __init__(self, settings: PiRuntimeSettings, config: CaptureBackendConfig, persistence: PersistenceBuffer) -> None:
-        self._settings = settings
+        super().__init__(settings, persistence)
         self._config = config
-        self._persistence = persistence
 
     def capture(self, exposure: dict[str, str] | None = None) -> CaptureResult:
         capture_id = uuid.uuid4().hex
