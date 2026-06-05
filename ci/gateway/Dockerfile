@@ -24,6 +24,10 @@ ARG ROS_DISTRO
 # publishes (sensor-msgs) + colcon to build the package. The node imports `zenoh`
 # and `PIL` DIRECTLY (not as ROS packages), and `ros2_gateway`'s package.xml lists
 # them only as exec deps, so colcon won't install them -- pip them explicitly.
+# build-essential + curl + rustup: the pinned eclipse-zenoh==1.8.0 ships NO
+# cp3x-abi3 manylinux x86_64 wheel (only a cp38 one, plus ARM/macOS abi3 wheels),
+# so on the x86_64 + Python 3.12 CI runner pip must build it from source -- give
+# it a Rust toolchain and a C linker. On the real Pi targets the abi3 wheel exists.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-rmw-zenoh-cpp \
@@ -32,7 +36,14 @@ RUN apt-get update \
         ros-${ROS_DISTRO}-std-srvs \
         python3-colcon-common-extensions \
         python3-pip \
+        build-essential curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+ENV CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --profile minimal
 
 # Newer ROS base images ship a PEP 668 "externally managed" marker; the relay
 # image is single-purpose so installing the two pure-Python deps system-wide is
