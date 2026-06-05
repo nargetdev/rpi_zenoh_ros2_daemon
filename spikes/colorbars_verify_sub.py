@@ -41,7 +41,10 @@ def on_sample(sample):
         print(f"[verify] decode error: {e} (payload {len(data)}B)", flush=True)
         return
     count += 1
-    first_px = list(bytes(msg.data[:3]))
+    # Sample a clean row below the epoch overlay panel (last row, x=0) so the
+    # printed pixel isn't masked by the black overlay box at (0,0).
+    last_row_start = (msg.height - 1) * msg.step
+    last_row_px = list(bytes(msg.data[last_row_start:last_row_start + 3]))
     ok = (
         msg.encoding == "rgb8"
         and msg.width
@@ -51,7 +54,7 @@ def on_sample(sample):
     tag = "GREEN" if ok else "??"
     print(
         f"[verify] #{count} {msg.width}x{msg.height} {msg.encoding} "
-        f"step={msg.step} bytes={len(msg.data)} first_px={first_px} "
+        f"step={msg.step} bytes={len(msg.data)} last_row_px={last_row_px} "
         f"frame_id={msg.header.frame_id} [{tag}]",
         flush=True,
     )
