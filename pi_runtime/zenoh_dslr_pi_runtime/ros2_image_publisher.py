@@ -8,6 +8,7 @@ from typing import Any
 from PIL import Image as PilImage
 
 from .models import Ros2PublishConfig
+from .qos_profile import build_qos_profile
 
 LOGGER = logging.getLogger("zenoh_dslr_pi_runtime.ros2_image_publisher")
 
@@ -52,7 +53,9 @@ class Ros2ImagePublisher:
                 domain_id=self._config.domain_id,
                 router_ip=self._config.router_ip,
                 router_port=self._config.router_port,
-                qos=self._build_qos(),
+                qos=build_qos_profile(
+                    self._config.qos_reliability, self._config.qos_history_depth
+                ),
             )
             self._time_cls = get_message_class("builtin_interfaces/msg/Time")
             self._header_cls = get_message_class("std_msgs/msg/Header")
@@ -76,26 +79,6 @@ class Ros2ImagePublisher:
                 )
                 self._warned = True
             return None
-
-    def _build_qos(self) -> Any | None:
-        """Map the shared contract's QoS fields onto a ``zenoh_ros2_sdk`` QoS profile.
-
-        Best-effort: if the SDK QoS module is unavailable or the values are
-        unexpected we fall back to the SDK default (``None``) rather than fail.
-        """
-        try:
-            from zenoh_ros2_sdk.qos import QosProfile, QosReliability
-        except Exception:  # pragma: no cover - SDK layout dependent
-            return None
-        reliability = (
-            QosReliability.RELIABLE
-            if str(self._config.qos_reliability).lower() == "reliable"
-            else QosReliability.BEST_EFFORT
-        )
-        return QosProfile(
-            reliability=reliability,
-            history_depth=int(self._config.qos_history_depth),
-        )
 
     def _downsample(self, image: PilImage.Image) -> PilImage.Image:
         """Shrink to fit within ``max_width`` x ``max_height`` preserving aspect.
